@@ -24,6 +24,11 @@ function qs(params) {
   return s ? '?' + s : ''
 }
 
+// The daemon reads its boolean query flags as the literal "1" (Query().Get(k) == "1"), NOT
+// "true"/"false" — so a flag must be sent as 1 when on and OMITTED when off. (Sending "true"
+// silently reads as off: that's why the all-machines grid + the archived toggle did nothing.)
+const flag = (b) => (b ? 1 : undefined)
+
 async function webGet(path) {
   const r = await fetch('/api' + path)
   if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text().catch(() => '')}`)
@@ -84,8 +89,8 @@ export const api = {
   mesh: () => sesh.get('/mesh'),
 
   // ── threads: grid & lifecycle ────────────────────────────────────────────
-  grid: (opts = {}) => sesh.get('/threads/grid' + qs({ archived: opts.archived, 'all-machines': opts.allMachines })),
-  threadList: (opts = {}) => sesh.get('/threads' + qs({ archived: opts.archived, 'all-machines': opts.allMachines })),
+  grid: (opts = {}) => sesh.get('/threads/grid' + qs({ archived: flag(opts.archived), 'all-machines': flag(opts.allMachines) })),
+  threadList: (opts = {}) => sesh.get('/threads' + qs({ archived: flag(opts.archived), 'all-machines': flag(opts.allMachines) })),
   threadStatus: (id) => sesh.get('/threads/status' + qs({ id })),
   threadNew: (req) => sesh.post('/threads', req),
   resume: (id) => sesh.post('/threads/resume', { id }),
