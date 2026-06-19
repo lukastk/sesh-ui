@@ -75,12 +75,14 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 
 ```bash
 cd ~/mysetup/sesh && go build -o /tmp/sesh ./cmd/sesh
-# isolated daemon with TCP API on; never touch the user's live daemon:
-SESH_HOME=/tmp/seshui-dev SESH_TMUX_SOCKET=seshui-dev SESH_MASTER_SOCKET=seshui-dev-m \
+# isolated daemon with TCP API on; never touch the user's live daemon.
+# NB: SESH_MACHINE is REQUIRED — the daemon refuses to run on a guessed hostname identity,
+# and use a DISTINCT name (seshui-dev) so it never collides with the real machine's daemon.
+SESH_MACHINE=seshui-dev SESH_HOME=/tmp/seshui-dev SESH_TMUX_SOCKET=seshui-dev SESH_MASTER_SOCKET=seshui-dev-m \
   SESH_CODEX_HOME=/tmp/seshui-codex SESH_API_ADDR=127.0.0.1:8990 SESH_API_TOKEN=devtoken \
   /tmp/sesh daemon run    # (codex needs ~/.codex/auth.json symlinked into SESH_CODEX_HOME)
-# spawn a pi thread to chat with:
-SESH_HOME=/tmp/seshui-dev ... /tmp/sesh thread new --agent pi --name demo --cwd /tmp --yolo
+# spawn a pi thread to chat with (carry the SAME SESH_* env, incl. SESH_MACHINE):
+SESH_MACHINE=seshui-dev SESH_HOME=/tmp/seshui-dev ... /tmp/sesh thread new --agent pi --name demo --cwd /tmp --yolo
 ```
 
 Point the Vite dev proxy at `127.0.0.1:8990` with the `devtoken` (see `vite.config.js`).
