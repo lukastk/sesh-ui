@@ -56,3 +56,15 @@ Legend: ✅ pass · 🔧 fixed-bug (commit) · ⚠️ known-limitation
   a single-machine dev daemon can't reproduce it here
 - ⚠️ pi RPC ribbon for a just-opened socket shows "connected" until pi emits its first state event
   (pi only broadcasts state around a turn) — cosmetic, now honest (was stuck at "connecting…")
+
+## Round 3 (overnight autonomous run)
+- ✅🔧 4 reported UI bugs: bubble dup (one user + one assistant, no flash), tree fold (collapse hides
+  subtree, persists across reload), overscroll containment, auto-follow + jump button — all driven live.
+- ✅ Cross-machine chat transport: peers.cjs resolves macstudio; HTTP /status + a WS terminal both route
+  through the bridge to macstudio's daemon (267 bytes of live pane). TERM fix + TCP API live on all 3
+  daemons. (Final Electron-GUI verify on the Mac is for Lukas.)
+- ✅ Automation center: hooks empty-state; subscriptions add (two-thread picker) + remove round-trip.
+- ✅ Thread fork: "Fork" → modal pre-filled from source → new thread carries the source's transcript.
+- ✅ Blob attachments: 📎 upload → chip + @blob token; daemon stored exact bytes + token expands to a path.
+- ✅ Android: seam branch + capacitor config build clean (dead-code off-device); env wall documented.
+- ⏳ Continuous regression pass (round 3 features + round 1/2 surfaces) — ongoing.
