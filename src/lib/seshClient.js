@@ -47,22 +47,29 @@ async function webPost(path, body) {
 export const sesh = {
   transport: electron ? 'electron' : 'web',
 
-  // GET /v1<path>  → parsed JSON
-  get(path) {
-    return electron ? window.sesh.get(path) : webGet(path)
+  // GET /v1<path>  → parsed JSON. `machine` (optional) routes to a peer daemon for cross-machine
+  // chat (Electron only — main holds the peer token); web/dev is a fixed single-daemon proxy.
+  get(path, machine) {
+    return electron ? window.sesh.get(path, machine) : webGet(path)
   },
-  // POST /v1<path> with a JSON body → parsed JSON
-  post(path, body) {
-    return electron ? window.sesh.post(path, body) : webPost(path, body)
+  // POST /v1<path> with a JSON body → parsed JSON. `machine` as for get().
+  post(path, body, machine) {
+    return electron ? window.sesh.post(path, body, machine) : webPost(path, body)
   },
   // A WebSocket URL for a streaming endpoint (the two daemon WS endpoints:
   // /v1/threads/rpc, /v1/threads/terminal). In web/dev the Vite proxy injects the token; in
   // Electron the renderer dials main's loopback bridge (wsBase), which injects auth upstream —
   // so the token stays out of the renderer for ws exactly as for http.
-  wsURL(path) {
-    if (electron) return window.sesh.wsBase + path
+  wsURL(path, machine) {
+    if (electron) return window.sesh.wsBase + path + (machine ? `&__machine=${encodeURIComponent(machine)}` : '')
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     return `${proto}://${location.host}${path}`
+  },
+
+  // Cross-machine reach: the machine we're connected to + the peer machines we can dial for chat.
+  // Web/dev can't dial peers (the proxy is fixed), so it reports none.
+  peerInfo() {
+    return electron ? window.sesh.peerInfo() : Promise.resolve({ connected: null, peers: [] })
   },
 
   // Connection settings (endpoint + token). In Electron these round-trip to the main process
@@ -103,11 +110,12 @@ export const api = {
   notify: (id, on) => sesh.post('/threads/notify', { id, on }),
 
   // ── threads: chat ────────────────────────────────────────────────────────
-  transcript: (id, tail = 200) => sesh.get('/threads/transcript' + qs({ id, tail })),
-  send: (id, text) => sesh.post('/threads/send', { id, text }),
-  sendHeadless: (id, text) => sesh.post('/threads/send-headless', { id, text }),
-  headlessReply: (id) => sesh.get('/threads/headless-reply' + qs({ id })),
-  capture: (id, lines = 0) => sesh.get('/threads/capture' + qs({ id, lines })),
+  // `machine` (optional) dials the thread's OWNING daemon for a cross-machine thread (Electron).
+  transcript: (id, tail = 200, machine) => sesh.get('/threads/transcript' + qs({ id, tail }), machine),
+  send: (id, text, machine) => sesh.post('/threads/send', { id, text }, machine),
+  sendHeadless: (id, text, machine) => sesh.post('/threads/send-headless', { id, text }, machine),
+  headlessReply: (id, machine) => sesh.get('/threads/headless-reply' + qs({ id }), machine),
+  capture: (id, lines = 0, machine) => sesh.get('/threads/capture' + qs({ id, lines }), machine),
 
   // ── filesystem picker (cwd) ──────────────────────────────────────────────
   fsList: (path) => sesh.get('/fs/list' + qs({ path })),
@@ -127,9 +135,10 @@ export const api = {
   blobAdd: (name, base64) => sesh.post('/blobs', { name, data: base64 }),
 
   // ── streaming endpoints (return WS URLs, not data) ───────────────────────
-  rpcURL: (id) => sesh.wsURL(`/v1/threads/rpc?id=${encodeURIComponent(id)}`),
-  terminalURL: (id, cols, rows) =>
-    sesh.wsURL(`/v1/threads/terminal?id=${encodeURIComponent(id)}&cols=${cols}&rows=${rows}`),
+  // `machine` (optional) routes the WS through main's bridge to the thread's owning daemon.
+  rpcURL: (id, machine) => sesh.wsURL(`/v1/threads/rpc?id=${encodeURIComponent(id)}`, machine),
+  terminalURL: (id, cols, rows, machine) =>
+    sesh.wsURL(`/v1/threads/terminal?id=${encodeURIComponent(id)}&cols=${cols}&rows=${rows}`, machine),
 }
 
 export const TICKET_STATUSES = ['triage', 'ready', 'active', 'done', 'dropped']

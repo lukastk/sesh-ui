@@ -3,7 +3,7 @@
   // toggle, ticket badges) on the left; a detail header + the right chat surface on the right.
   // Lifecycle verbs emit through seshClient; their failures go to the loud global toast store,
   // kept separate from the live-poll model so a poll tick never wipes an action error.
-  import { api } from '../lib/seshClient.js'
+  import { api, sesh } from '../lib/seshClient.js'
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll, conn } from '../lib/connection.svelte.js'
@@ -48,11 +48,21 @@
   $effect(() => { showArchived; showAllMachines; refresh() })   // immediate refetch when a toggle flips
   $effect(() => { const t = setInterval(refresh, 2500); return () => clearInterval(t) })
 
+  // Cross-machine chat: a thread on ANOTHER machine has its rpc/terminal pane + transcript on that
+  // machine's daemon. We dial that thread's OWNING daemon directly (Electron main holds the peer
+  // token, from peers.json). `dialable` is the set of peer machines we can reach for chat; for a
+  // remote thread NOT in it (e.g. web/dev, or an ssh-only peer) we keep the read-only notice.
+  let dialable = $state(new Set())
+  $effect(() => { sesh.peerInfo().then((i) => { dialable = new Set(i.peers || []) }).catch(() => {}) })
+
   let selected = $derived(rows.find((r) => r.id === selectedId) || null)
-  // The app has ONE transport (the connected daemon). A thread on ANOTHER machine can't be chatted
-  // with here — its rpc/terminal pane lives on that daemon and even its transcript is local-store
-  // only — so dialing would 404/409. We gate the CHAT surface (not the grid) behind a clear notice.
   let isRemote = $derived(!!(selected && conn.machine && selected.machine !== conn.machine))
+  let canDialRemote = $derived(isRemote && dialable.has(selected.machine))
+  // The machine to hand the chat surface: the owning machine for a dial-able remote thread, else
+  // undefined (the local/connected daemon).
+  let chatMachine = $derived(canDialRemote ? selected.machine : undefined)
+  // Only block the chat surface when the remote thread is NOT dial-able from here.
+  let blockedRemote = $derived(isRemote && !canDialRemote)
 
   // Build the flattened, depth-annotated tree for display (DFS from roots; a row whose parent
   // isn't in the current set is treated as a root so nothing is orphaned out of view).
@@ -168,7 +178,7 @@
           <span class="sub">{selected.agent_kind} · {stateLabel(selected)} · {selected.cwd_rel || selected.cwd}</span>
         </div>
         <div class="actions">
-          {#if !isRemote}
+          {#if !blockedRemote}
           <div class="seg">
             {#if selected.agent_kind === 'pi'}
               <button class:on={surface === 'rpc'} class:muted={!rpcLive(selected)} onclick={() => (mode = 'rpc')}
@@ -193,23 +203,23 @@
         </div>
       </header>
       <section class="surface">
-        {#if isRemote}
+        {#if blockedRemote}
           <div class="remote-notice">
             <div class="rn-emoji">🌐</div>
             <div class="rn-title">This thread lives on <b>{selected.machine}</b>.</div>
             <div class="rn-body">
-              You're connected to <b>{conn.machine}</b>. Cross-machine chat isn't wired up yet — the
-              live RPC/terminal pane and the transcript are served by that thread's own daemon. It
-              still shows here in the grid, tickets and machines; only its chat is unavailable from
-              this connection.
+              You're connected to <b>{conn.machine}</b>, and there's no dial-able API endpoint for
+              <b>{selected.machine}</b> from here (it's ssh-only in peers.json, or this is the web/dev
+              build). Its live pane and transcript are served by that machine's own daemon. It still
+              shows in the grid, tickets and machines; only its chat is unavailable from this connection.
             </div>
           </div>
         {:else if surface === 'rpc'}
-          {#key selected.id + mode}<RpcChat threadId={selected.id} />{/key}
+          {#key selected.id + mode}<RpcChat threadId={selected.id} machine={chatMachine} />{/key}
         {:else if surface === 'terminal'}
-          {#key selected.id}<Terminal threadId={selected.id} />{/key}
+          {#key selected.id}<Terminal threadId={selected.id} machine={chatMachine} />{/key}
         {:else if surface === 'headless'}
-          {#key selected.id}<HeadlessChat threadId={selected.id} agentKind={selected.agent_kind} />{/key}
+          {#key selected.id}<HeadlessChat threadId={selected.id} agentKind={selected.agent_kind} machine={chatMachine} />{/key}
         {/if}
       </section>
     {/if}

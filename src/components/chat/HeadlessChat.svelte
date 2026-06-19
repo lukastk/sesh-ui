@@ -7,7 +7,7 @@
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
 
-  let { threadId, agentKind = 'pi' } = $props()
+  let { threadId, agentKind = 'pi', machine = undefined } = $props()  // machine: remote thread's owning daemon
 
   let msgs = $state([])       // {role, text, thinking?}
   let draft = $state('')
@@ -19,7 +19,7 @@
 
   async function load() {
     try {
-      const t = await api.transcript(threadId, 300)
+      const t = await api.transcript(threadId, 300, machine)
       msgs = parseTranscript(t.lines || [], agentKind)
       loadErr = null
       await scrollDown()
@@ -49,10 +49,10 @@
     draft = ''
     await scrollDown(true)      // sending always snaps to the latest
     try {
-      await api.sendHeadless(threadId, text)
+      await api.sendHeadless(threadId, text, machine)
       // Poll until the turn completes, then reload the durable transcript for the full turn.
       for (let i = 0; i < 180; i++) {
-        const r = await api.headlessReply(threadId)
+        const r = await api.headlessReply(threadId, machine)
         if (!r.working && r.have_reply) break
         await new Promise((res) => setTimeout(res, 1000))
       }

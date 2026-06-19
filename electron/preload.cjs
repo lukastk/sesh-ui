@@ -19,9 +19,11 @@ async function unwrap(promise) {
 }
 
 contextBridge.exposeInMainWorld('sesh', {
-  get: (path) => unwrap(ipcRenderer.invoke('sesh:get', path)),
-  post: (path, body) => unwrap(ipcRenderer.invoke('sesh:post', path, body)),
+  // `machine` (optional) routes a call to a peer daemon for cross-machine chat; main holds the token.
+  get: (path, machine) => unwrap(ipcRenderer.invoke('sesh:get', path, machine)),
+  post: (path, body, machine) => unwrap(ipcRenderer.invoke('sesh:post', path, body, machine)),
   wsBase: ipcRenderer.sendSync('sesh:ws-base'),
+  peerInfo: () => ipcRenderer.invoke('sesh:peer-info'),
   getConfig: () => ipcRenderer.invoke('sesh:get-config'),
   setConfig: (cfg) => ipcRenderer.invoke('sesh:set-config', cfg),
 })

@@ -7,20 +7,32 @@
 // token (local trust). See electron/transport.cjs and electron/config.cjs.
 const { app, BrowserWindow, ipcMain, safeStorage } = require('electron')
 const path = require('node:path')
-const { createTransport } = require('./transport.cjs')
+const transport = require('./transport.cjs')
+const { peerConfig, peerMachines } = require('./peers.cjs')
 const { resolveConfig, saveConfig, publicConfig, isConfigured } = require('./config.cjs')
 
-let cfg = null          // resolved runtime config { socketPath } | { host, port, token }
-let transport = null    // createTransport(cfg)
-let bridge = null       // { wss, base } loopback WS bridge
+let cfg = null              // the CONNECTED daemon's config { socketPath } | { host, port, token }
+let connectedMachine = null // its machine name (so we can tell local vs a peer target)
+let bridge = null           // { wss, base } loopback WS bridge
 let win = null
+
+// Resolve the daemon cfg for a target machine: '' / null / the connected machine → the connected
+// daemon; any other machine → its peer endpoint from peers.json (token read in main). null if we
+// have no dial-able endpoint for it (the renderer then keeps the cross-machine notice).
+function resolveCfgForMachine(machine) {
+  if (!machine || machine === connectedMachine) return cfg
+  const pc = peerConfig(machine)
+  return pc ? { host: pc.host, port: pc.port, token: pc.token } : null
+}
 
 async function buildTransport() {
   if (bridge) { try { bridge.wss.close() } catch {} bridge = null }
   cfg = resolveConfig(app.getPath('userData'), safeStorage)
-  transport = createTransport(cfg)
-  bridge = await transport.startWsBridge()
-  console.log('sesh: transport', publicConfig(cfg).mode, '→', publicConfig(cfg).target, '· ws bridge', bridge.base)
+  bridge = await transport.startWsBridge(resolveCfgForMachine)
+  // Learn the connected daemon's machine name so per-thread routing knows what "local" is.
+  try { connectedMachine = (await transport.request(cfg, '/status')).machine } catch { connectedMachine = null }
+  console.log('sesh: transport', publicConfig(cfg).mode, '→', publicConfig(cfg).target,
+    '· machine', connectedMachine, '· peers', peerMachines().join(',') || '(none)', '· ws bridge', bridge.base)
 }
 
 function createWindow() {
@@ -41,17 +53,22 @@ function createWindow() {
 // console with EXPECTED 4xx (e.g. a never-run thread's 404 "no transcript"). preload.cjs unwraps
 // this back into a resolve/throw, so the renderer's loud-error contract is unchanged. Here we log
 // ONLY genuine failures (transport errors / 5xx) — never an expected client-side 4xx.
-async function doRequest(p, method, body) {
+async function doRequest(p, method, body, machine) {
+  const target = resolveCfgForMachine(machine)
+  if (!target) return { ok: false, error: `no dial-able endpoint for machine "${machine}"`, status: 0 }
   try {
-    return { ok: true, data: await transport.request(p, method, body) }
+    return { ok: true, data: await transport.request(target, p, method, body) }
   } catch (e) {
     const status = e.status ?? 0
-    if (!(status >= 400 && status < 500)) console.error('sesh transport error:', p, '·', e.message)
+    if (!(status >= 400 && status < 500)) console.error('sesh transport error:', machine || 'local', p, '·', e.message)
     return { ok: false, error: e.message, status }
   }
 }
-ipcMain.handle('sesh:get', (_e, p) => doRequest(p, 'GET'))
-ipcMain.handle('sesh:post', (_e, p, body) => doRequest(p, 'POST', body))
+// The optional 4th arg is the target machine for cross-machine chat ('' / undefined → local).
+ipcMain.handle('sesh:get', (_e, p, machine) => doRequest(p, 'GET', undefined, machine))
+ipcMain.handle('sesh:post', (_e, p, body, machine) => doRequest(p, 'POST', body, machine))
+// Peer info for the renderer: which machine we're connected to + the machines we can dial for chat.
+ipcMain.handle('sesh:peer-info', () => ({ connected: connectedMachine, peers: peerMachines() }))
 // WS base — synchronous so seshClient.wsURL() can stay synchronous (new WebSocket(url)).
 ipcMain.on('sesh:ws-base', (e) => { e.returnValue = bridge ? bridge.base : '' })
 // Settings — read the token-free config view; write a new endpoint (token encrypted in main).

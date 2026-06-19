@@ -8,7 +8,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { api } from '../../lib/seshClient.js'
 
-  let { threadId } = $props()
+  let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
   let el
   let term, fit, ws, ro
 
@@ -22,7 +22,7 @@
     term.open(el)
     fit.fit()
 
-    ws = new WebSocket(api.terminalURL(threadId, term.cols, term.rows))
+    ws = new WebSocket(api.terminalURL(threadId, term.cols, term.rows, machine))
     ws.binaryType = 'arraybuffer'
     ws.onopen = () => ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
     ws.onmessage = (ev) => term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data))

@@ -12,7 +12,7 @@
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
 
-  let { threadId } = $props()
+  let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
 
   let history = $state([])     // completed turns from the transcript (authoritative) {role,text,thinking}
   let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
@@ -38,7 +38,7 @@
   // still sits in `live` → a transient duplicate). Freezing history during the turn prevents that.
   async function loadHistory(force = false) {
     try {
-      const t = await api.transcript(threadId, 300)
+      const t = await api.transcript(threadId, 300, machine)
       if (!force && streaming) return
       history = parseTranscript(t.lines || [], 'pi')
       await scrollDown()
@@ -50,7 +50,7 @@
   }
 
   function open(id) {
-    ws = new WebSocket(api.rpcURL(id))
+    ws = new WebSocket(api.rpcURL(id, machine))
     // Reflect the true socket state: pi only emits a state event around a turn, so without this
     // the ribbon would sit at "connecting…" even once the socket is open and ready.
     ws.onopen = () => { if (state === 'connecting…') state = 'connected' }
