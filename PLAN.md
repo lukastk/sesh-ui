@@ -48,6 +48,16 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 - [x] **Machines/mesh**: `GET /v1/mesh` — reachability dot + freshness + per-machine threads (offline =
       visibly dimmed last-known, never silently stale).
 
+### Hardening (post-review, driven live on mymain)
+- [x] **Toast flood on daemon outage fixed** — background polls (status/grid/tickets/mesh) no longer
+      each spawn a persistent toast. A shared `connection.svelte.js` store collects poll reachability;
+      App renders ONE banner from `!conn.online`; `pushError` dedupes (×count). Verb-failure toasts
+      stay loud. Daemon-down → reconnect is graceful (banner auto-clears). Verified by killing/restarting
+      the dev daemon mid-poll.
+- [x] **In-app dialogs replace `window.prompt`/`confirm`** (`PromptDialog`/`ConfirmDialog`) — `prompt()`
+      is a silent no-op in Electron, so thread Rename did nothing there; now works on web AND Electron
+      (verified in real Electron via CDP).
+
 ## Phase 2 — Electron desktop app  · **done**
 
 - [x] **Main-process transport** (`electron/transport.cjs` + `config.cjs` + `main.cjs`): the renderer
