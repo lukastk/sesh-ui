@@ -5,6 +5,7 @@
   // with a raw fallback. (A normalized sesh-side chat stream would replace these — PLAN.md.)
   import { tick } from 'svelte'
   import { api } from '../../lib/seshClient.js'
+  import { parseTranscript } from '../../lib/transcript.js'
 
   let { threadId, agentKind = 'pi' } = $props()
 
@@ -15,56 +16,10 @@
   let scroller
   let loadedFor = null
 
-  const PARSERS = {
-    // pi: {type:"message", message:{role, content:[{type:"text"|"thinking", text/thinking}]}}
-    pi(o) {
-      if (o.type !== 'message' || !o.message) return null
-      const c = o.message.content || []
-      return mk(o.message.role,
-        c.filter((x) => x.type === 'text').map((x) => x.text).join('\n'),
-        c.filter((x) => x.type === 'thinking').map((x) => x.thinking).join('\n'))
-    },
-    // claude: {type:"user"|"assistant", message:{role, content: string | [{type:"text",text}]}}
-    claude(o) {
-      if (o.type !== 'user' && o.type !== 'assistant') return null
-      const content = o.message?.content
-      if (typeof content === 'string') return mk(o.message.role, content)
-      const arr = content || []
-      return mk(o.message?.role,
-        arr.filter((x) => x.type === 'text').map((x) => x.text).join('\n'),
-        arr.filter((x) => x.type === 'thinking').map((x) => x.thinking).join('\n'))
-    },
-    // codex: {type:"response_item", payload:{type:"message", role, content:[{type:"input_text"|"output_text", text}]}}
-    codex(o) {
-      if (o.type !== 'response_item' || o.payload?.type !== 'message') return null
-      const role = o.payload.role
-      if (role !== 'user' && role !== 'assistant') return null
-      const text = (o.payload.content || [])
-        .filter((x) => x.type === 'input_text' || x.type === 'output_text').map((x) => x.text).join('\n')
-      if (role === 'user' && /^\s*<(environment_context|permissions)/.test(text)) return null
-      return mk(role, text)
-    },
-  }
-  function mk(role, text, thinking) {
-    if (!text && !thinking) return null
-    return { role, text: text || '', thinking: thinking || '' }
-  }
-  function parse(lines) {
-    const p = PARSERS[agentKind] || PARSERS.pi
-    const out = []
-    for (const raw of lines) {
-      let o
-      try { o = JSON.parse(raw) } catch { continue }
-      const m = p(o)
-      if (m) out.push(m)
-    }
-    return out
-  }
-
   async function load() {
     try {
       const t = await api.transcript(threadId, 300)
-      msgs = parse(t.lines || [])
+      msgs = parseTranscript(t.lines || [], agentKind)
       loadErr = null
       await scrollDown()
     } catch (e) {

@@ -1,20 +1,43 @@
 <script>
   // Streaming bubble chat for a pi thread over the daemon WebSocket GET /v1/threads/rpc?id=.
-  // Works for headful AND headless pi (token-level streaming — pi-only by construction).
-  // The socket URL comes from seshClient (the proxy/main-process injects the bearer token).
+  //
+  // The rpc-socket only broadcasts events for turns INITIATED VIA THE SOCKET (sesh exp 04
+  // FINDINGS) and carries NO history — so the socket alone misses turns typed in the pi TUI and
+  // loses everything on a thread switch. We therefore back the chat with the TRANSCRIPT (the
+  // source of truth for every completed turn, incl. TUI-typed ones): load it on open and poll
+  // it for new turns. The socket is used only to OVERLAY the in-flight UI turn with live
+  // token-level streaming. Display = transcript history + the live overlay; the overlay is
+  // cleared once its completed turn lands in the reloaded transcript, so nothing shows twice.
   import { onDestroy, tick } from 'svelte'
   import { api } from '../../lib/seshClient.js'
+  import { parseTranscript } from '../../lib/transcript.js'
 
   let { threadId } = $props()
 
-  let msgs = $state([])        // {role:'user'|'assistant'|'tool', text}
+  let history = $state([])     // completed turns from the transcript (authoritative) {role,text,thinking}
+  let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
   let draft = $state('')
   let state = $state('connecting…')
   let streaming = $state(false)
   let ws = null
   let scroller
-  let connectedFor = null
-  let streamIdx = null
+  let activeFor = null
+  let streamIdx = null         // index into `live` of the assistant bubble being streamed
+  let pollTimer = null
+
+  let bubbles = $derived([...history, ...live])
+
+  async function loadHistory() {
+    try {
+      const t = await api.transcript(threadId, 300)
+      history = parseTranscript(t.lines || [], 'pi')
+      await scrollDown()
+    } catch (e) {
+      // A never-run pi thread has no transcript yet — a legitimate empty state, not a failure.
+      if (/no transcript/i.test(String(e))) history = []
+      // else: keep the last-known history; the ribbon reflects the socket/connection state.
+    }
+  }
 
   function open(id) {
     ws = new WebSocket(api.rpcURL(id))
@@ -22,17 +45,21 @@
       let m
       try { m = JSON.parse(ev.data) } catch { return }
       if (m.ok && m.state) { state = m.state.idle ? `idle · ${m.state.config?.model ?? 'pi'}` : 'busy'; return }
-      if (m.error) { msgs = [...msgs, { role: 'tool', text: '⚠ ' + m.error }]; return }
+      if (m.error) { live = [...live, { role: 'tool', text: '⚠ ' + m.error }]; return }
       if (m.event === 'text_delta') {
-        if (streamIdx === null) { msgs = [...msgs, { role: 'assistant', text: '' }]; streamIdx = msgs.length - 1; streaming = true }
-        msgs = msgs.map((x, i) => (i === streamIdx ? { ...x, text: x.text + m.delta } : x))
+        if (streamIdx === null) { live = [...live, { role: 'assistant', text: '' }]; streamIdx = live.length - 1; streaming = true }
+        live = live.map((x, i) => (i === streamIdx ? { ...x, text: x.text + m.delta } : x))
         await scrollDown()
       } else if (m.event === 'tool_execution_start') {
-        streamIdx = null; msgs = [...msgs, { role: 'tool', text: '▶ ' + m.toolName }]
+        streamIdx = null; live = [...live, { role: 'tool', text: '▶ ' + m.toolName }]
       } else if (m.event === 'tool_execution_end') {
-        streamIdx = null; msgs = [...msgs, { role: 'tool', text: '■ ' + m.toolName }]
+        streamIdx = null; live = [...live, { role: 'tool', text: '■ ' + m.toolName }]
       } else if (m.event === 'agent_end') {
         streamIdx = null; streaming = false; state = 'idle'
+        // The completed turn is now persisted — reload the transcript, THEN drop the overlay
+        // (load-then-clear, so there's no blank flash and no duplicated bubble).
+        await loadHistory()
+        live = []
       }
     }
     ws.onclose = () => { if (state !== 'error') state = 'closed' }
@@ -43,7 +70,7 @@
   function send() {
     const text = draft.trim()
     if (!text || !ws || ws.readyState !== 1) return
-    msgs = [...msgs, { role: 'user', text }]
+    live = [...live, { role: 'user', text }]
     draft = ''
     streamIdx = null
     ws.send(JSON.stringify({ message: text }))
@@ -52,26 +79,34 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  // Connect ONCE per thread. The parent re-polls the grid (reassigning the selected row),
-  // so guard against re-runs that would wipe msgs and leak sockets.
+  // (Re)bind per thread. The parent re-polls the grid (reassigning the selected row), so guard
+  // against re-runs for the SAME id that would wipe state and leak sockets/timers.
   $effect(() => {
     const id = threadId
-    if (id === connectedFor) return
-    connectedFor = id
-    msgs = []; streamIdx = null; streaming = false; state = 'connecting…'
+    if (id === activeFor) return
+    activeFor = id
+    history = []; live = []; streamIdx = null; streaming = false; state = 'connecting…'
     try { ws?.close() } catch {}
-    open(id)
+    clearInterval(pollTimer)
+    loadHistory()                 // show persisted history immediately — never blank on switch
+    open(id)                      // socket: live streaming of UI-initiated turns
+    // Poll the transcript so TUI-initiated turns (never broadcast on the socket) appear too.
+    // Skip while a UI turn is mid-stream (the overlay is showing it; reload happens on agent_end).
+    pollTimer = setInterval(() => { if (!streaming) loadHistory() }, 2000)
   })
-  onDestroy(() => { try { ws?.close() } catch {} })
+  onDestroy(() => { try { ws?.close() } catch {}; clearInterval(pollTimer) })
 </script>
 
 <div class="chat">
-  <div class="ribbon">⚡ pi RPC · streaming · {state}</div>
+  <div class="ribbon">⚡ pi RPC · transcript-backed · {state}</div>
   <div class="log" bind:this={scroller}>
-    {#each msgs as m}
-      <div class="bubble {m.role}">{m.text}{#if m.role === 'assistant' && streaming && m === msgs[msgs.length - 1]}<span class="cursor"></span>{/if}</div>
+    {#each bubbles as m, i (i)}
+      <div class="bubble {m.role}">
+        {#if m.thinking}<div class="thinking">{m.thinking}</div>{/if}
+        <div class="text">{m.text}{#if m.role === 'assistant' && streaming && i === bubbles.length - 1}<span class="cursor"></span>{/if}</div>
+      </div>
     {/each}
-    {#if msgs.length === 0}<div class="empty">Send a message to stream a turn from the live pi agent.</div>{/if}
+    {#if bubbles.length === 0}<div class="empty">No turns yet — send a message (streams live), or type in the pi TUI.</div>{/if}
   </div>
   <div class="composer">
     <textarea bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send, Shift+Enter for newline" onkeydown={onkey}></textarea>
@@ -90,6 +125,8 @@
   .assistant { align-self: flex-start; background: #1c1d2b; color: #c0caf5; }
   .tool { align-self: flex-start; font-size: 11px; color: #e0af68; font-family: ui-monospace, monospace;
     background: none; padding: 0 4px; }
+  .thinking { opacity: 0.5; font-style: italic; font-size: 12px; margin-bottom: 6px;
+    border-left: 2px solid #565f89; padding-left: 6px; }
   .empty { color: #565f89; font-size: 13px; margin: auto; }
   .cursor::after { content: '▋'; color: #7aa2f7; animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
