@@ -4,11 +4,14 @@
   import { api } from '../lib/seshClient.js'
   import FsPicker from './FsPicker.svelte'
 
-  let { parent = '', onclose, oncreated } = $props()
+  // forkFrom: branch an existing thread's conversation (its full prefix, message_id 0). The new
+  // thread's agent/cwd default to the source's, so they're pre-filled from forkAgent/forkCwd.
+  let { parent = '', forkFrom = '', forkAgent = 'pi', forkName = '', forkCwd = '~', onclose, oncreated } = $props()
 
-  let agent = $state('pi')
-  let name = $state('')
-  let cwd = $state('~')
+  const isFork = !!forkFrom
+  let agent = $state(isFork ? forkAgent : 'pi')
+  let name = $state(isFork && forkName ? `${forkName}-fork` : '')
+  let cwd = $state(isFork ? forkCwd : '~')
   let headless = $state(false)
   let mode = $state('yolo')
   let msg = $state('')
@@ -21,6 +24,7 @@
     try {
       const req = { agent, name: name.trim(), cwd: cwd.trim() || '~', headless, mode }
       if (parent) req.parent = parent
+      if (isFork) { req.fork_from = forkFrom; req.message_id = 0 } // branch the whole conversation
       if (!headless && msg.trim()) req.msg = msg.trim()
       const res = await api.threadNew(req)
       oncreated(res.thread.id)
@@ -30,7 +34,7 @@
 
 <div class="backdrop" onclick={onclose} role="presentation">
   <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
-    <h3>New thread{#if parent}<span class="par"> · child</span>{/if}</h3>
+    <h3>{isFork ? 'Fork thread' : 'New thread'}{#if isFork}<span class="par"> · branch of {forkName || 'source'}</span>{:else if parent}<span class="par"> · child</span>{/if}</h3>
 
     <label>Agent
       <div class="seg">

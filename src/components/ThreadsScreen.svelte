@@ -23,6 +23,7 @@
   // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
   let showAllMachines = $state(true)
   let newParent = $state(undefined)  // undefined = modal closed; '' = root; id = child
+  let forkTarget = $state(null)      // thread being forked (opens the modal in fork mode)
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
   let deleteTarget = $state(null)    // thread pending delete confirmation
 
@@ -197,6 +198,7 @@
             <button onclick={() => act('headful', () => api.headful(selected.id))}>Headful</button>
           {/if}
           <button onclick={() => (newParent = selected.id)} title="new child thread">+ Child</button>
+          <button onclick={() => (forkTarget = selected)} title="branch this conversation into a new thread">Fork</button>
           <button onclick={() => (renameTarget = selected)}>Rename</button>
           <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
           <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
@@ -227,6 +229,12 @@
 
   {#if newParent !== undefined}
     <NewThreadModal parent={newParent} onclose={() => (newParent = undefined)} oncreated={onCreated} />
+  {/if}
+
+  {#if forkTarget}
+    <NewThreadModal forkFrom={forkTarget.id} forkAgent={forkTarget.agent_kind}
+      forkName={forkTarget.name || ''} forkCwd={forkTarget.cwd_rel || forkTarget.cwd || '~'}
+      onclose={() => (forkTarget = null)} oncreated={(id) => { forkTarget = null; onCreated(id) }} />
   {/if}
 
   {#if renameTarget}

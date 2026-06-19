@@ -8,9 +8,10 @@
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
   import MachinesScreen from './components/MachinesScreen.svelte'
+  import AutomationScreen from './components/AutomationScreen.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
 
-  const tabs = [['threads', 'Threads'], ['tickets', 'Tickets'], ['machines', 'Machines']]
+  const tabs = [['threads', 'Threads'], ['tickets', 'Tickets'], ['machines', 'Machines'], ['automation', 'Automation']]
   let screen = $state('threads')
   let showSettings = $state(false)
 
@@ -58,7 +59,8 @@
   <div class="body">
     {#if screen === 'threads'}<ThreadsScreen />
     {:else if screen === 'tickets'}<TicketsBoard />
-    {:else if screen === 'machines'}<MachinesScreen />{/if}
+    {:else if screen === 'machines'}<MachinesScreen />
+    {:else if screen === 'automation'}<AutomationScreen />{/if}
   </div>
 
   <!-- ONE connection banner for an unreachable daemon — driven by the shared connection store

@@ -131,6 +131,20 @@ export const api = {
   ticketSendPrompt: (id) => sesh.post('/tickets/send-prompt', { id }),
   ticketUnbind: (id) => sesh.post('/tickets/unbind', { id }),
 
+  // ── threads: tags ─────────────────────────────────────────────────────────
+  tag: (id, add, remove) => sesh.post('/threads/tag', { id, add: add || undefined, remove: remove || undefined }),
+
+  // ── automation: hooks ──────────────────────────────────────────────────────
+  hooks: () => sesh.get('/hooks'),
+  hookMute: (name, muted) => sesh.post('/hooks/mute', { name, muted }),
+  hookTest: (name, threadId) => sesh.post('/hooks/test', { name, thread_id: threadId || undefined }),
+
+  // ── automation: subscriptions (agent-to-agent edges) ───────────────────────
+  subscriptions: () => sesh.get('/subscriptions'),
+  subscribe: (subscriber, subscribee, allowCycle) =>
+    sesh.post('/subscriptions', { subscriber, subscribee, allow_cycle: allowCycle || undefined }),
+  unsubscribe: (subscriber, subscribee) => sesh.post('/subscriptions/remove', { subscriber, subscribee }),
+
   // ── blobs ────────────────────────────────────────────────────────────────
   blobAdd: (name, base64) => sesh.post('/blobs', { name, data: base64 }),
 
