@@ -57,6 +57,21 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 - [x] **In-app dialogs replace `window.prompt`/`confirm`** (`PromptDialog`/`ConfirmDialog`) — `prompt()`
       is a silent no-op in Electron, so thread Rename did nothing there; now works on web AND Electron
       (verified in real Electron via CDP).
+- [x] **All-machines grid by default** — the Threads grid now requests `all-machines` (default ON, with
+      a visible toggle), matching `sesh tui` (whose wrapper adds `--all-machines`). The daemon fans out
+      to its peers, so one connection shows the whole mesh; remote rows carry a `⌘ <machine>` badge.
+- [x] **Graceful remote threads** — the app has ONE transport (the connected daemon). A thread whose
+      `row.machine` differs from the connected daemon (`/status`.machine, tracked in `connection.svelte.js`)
+      can't have its rpc/terminal/transcript served here, so its CHAT surface shows a clear notice instead
+      of 404/409-ing. Grid/tickets/machines still show it; lifecycle verbs still fan out daemon-side. (Full
+      cross-machine chat = dialing the owning daemon — see backlog.)
+- [x] **Transcript-404 console noise silenced** — a never-run thread legitimately has no transcript (404);
+      the renderer already treats it as empty, but Electron's `ipcMain.handle` logged every such rejection
+      as "Error occurred in handler for sesh:get". Main now resolves a structured `{ok}|{error,status}`
+      result (unwrapped back to resolve/throw in `preload.cjs`, so the renderer's loud-error contract is
+      unchanged) and logs ONLY genuine failures (transport errors / 5xx), never an expected 4xx.
+- [x] **Launcher defaults to the real daemon** — `launch-sesh-ui.command` points the app at the real local
+      `~/.sesh/daemon.sock` (normal use); the isolated demo daemon + demo threads are behind `SESHUI_DEMO=1`.
 
 ## Phase 2 — Electron desktop app  · **done**
 
@@ -93,8 +108,11 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 
 - **Normalized transcript/chat stream** `GET /v1/threads/chat` (typed turns incl. tool calls/diffs) so
   the client doesn't reimplement 3 agents' JSONL. The biggest remaining backend piece (see sesh exp 08).
-- Cross-machine WebSocket: today the UI must dial the thread's *owning* daemon for rpc/terminal; a
-  hub-proxy variant in sesh would let the app hit one daemon for everything.
+- **Cross-machine CHAT** (the gated case above): today the UI must dial the thread's *owning* daemon for
+  rpc/terminal, and the transcript is local-store-only, so chatting with a remote thread from the connected
+  daemon isn't possible — the UI shows a notice. A hub-proxy variant in sesh (the connected daemon proxies
+  the rpc/terminal upgrade + transcript fetch to the owning peer) would let the app chat with any thread
+  over one connection. This is the right fix; do NOT hack per-daemon dialing into the client.
 - `/v1/peers` CRUD (so Android can manage machines — `peers.json` is local-file-only today).
 
 ---
