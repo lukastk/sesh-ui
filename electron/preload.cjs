@@ -7,9 +7,20 @@
 // does `new WebSocket(wsBase + path)` against main's bridge, which injects auth upstream.
 const { contextBridge, ipcRenderer } = require('electron')
 
+// main returns a STRUCTURED result ({ok,data} | {ok:false,error,status}) so a 4xx doesn't make
+// Electron log the handler rejection. Unwrap it here back into resolve/throw, preserving the same
+// Error shape (message + .status) the renderer already expects from the web transport.
+async function unwrap(promise) {
+  const r = await promise
+  if (r && r.ok) return r.data
+  const err = new Error(r?.error ?? 'sesh request failed')
+  err.status = r?.status
+  throw err
+}
+
 contextBridge.exposeInMainWorld('sesh', {
-  get: (path) => ipcRenderer.invoke('sesh:get', path),
-  post: (path, body) => ipcRenderer.invoke('sesh:post', path, body),
+  get: (path) => unwrap(ipcRenderer.invoke('sesh:get', path)),
+  post: (path, body) => unwrap(ipcRenderer.invoke('sesh:post', path, body)),
   wsBase: ipcRenderer.sendSync('sesh:ws-base'),
   getConfig: () => ipcRenderer.invoke('sesh:get-config'),
   setConfig: (cfg) => ipcRenderer.invoke('sesh:set-config', cfg),

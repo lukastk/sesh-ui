@@ -41,7 +41,12 @@ function createTransport(cfg) {
         res.on('data', (c) => (data += c))
         res.on('end', () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`${path}: ${res.statusCode} ${data}`))
+            // Carry the status code on the Error so the IPC layer can classify it: an expected
+            // 4xx (e.g. a never-run thread's 404 "no transcript") is a normal app state, not a
+            // genuine failure to log loudly. The renderer still gets a loud reject either way.
+            const err = new Error(`${path}: ${res.statusCode} ${data}`)
+            err.status = res.statusCode
+            reject(err)
             return
           }
           try { resolve(data ? JSON.parse(data) : {}) }

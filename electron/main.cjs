@@ -35,9 +35,23 @@ function createWindow() {
 }
 
 // ── IPC: the seam the renderer's seshClient talks to ──
-// HTTP — main does the request (token applied here for remote).
-ipcMain.handle('sesh:get', (_e, p) => transport.request(p, 'GET'))
-ipcMain.handle('sesh:post', (_e, p, body) => transport.request(p, 'POST', body))
+// HTTP — main does the request (token applied here for remote). We resolve a STRUCTURED result
+// ({ok} | {error}) rather than letting the promise reject: a rejected ipcMain.handle handler is
+// logged by Electron itself as "Error occurred in handler for 'sesh:get'", which floods the
+// console with EXPECTED 4xx (e.g. a never-run thread's 404 "no transcript"). preload.cjs unwraps
+// this back into a resolve/throw, so the renderer's loud-error contract is unchanged. Here we log
+// ONLY genuine failures (transport errors / 5xx) — never an expected client-side 4xx.
+async function doRequest(p, method, body) {
+  try {
+    return { ok: true, data: await transport.request(p, method, body) }
+  } catch (e) {
+    const status = e.status ?? 0
+    if (!(status >= 400 && status < 500)) console.error('sesh transport error:', p, '·', e.message)
+    return { ok: false, error: e.message, status }
+  }
+}
+ipcMain.handle('sesh:get', (_e, p) => doRequest(p, 'GET'))
+ipcMain.handle('sesh:post', (_e, p, body) => doRequest(p, 'POST', body))
 // WS base — synchronous so seshClient.wsURL() can stay synchronous (new WebSocket(url)).
 ipcMain.on('sesh:ws-base', (e) => { e.returnValue = bridge ? bridge.base : '' })
 // Settings — read the token-free config view; write a new endpoint (token encrypted in main).
