@@ -41,6 +41,9 @@
 
   function open(id) {
     ws = new WebSocket(api.rpcURL(id))
+    // Reflect the true socket state: pi only emits a state event around a turn, so without this
+    // the ribbon would sit at "connecting…" even once the socket is open and ready.
+    ws.onopen = () => { if (state === 'connecting…') state = 'connected' }
     ws.onmessage = async (ev) => {
       let m
       try { m = JSON.parse(ev.data) } catch { return }
