@@ -88,6 +88,19 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
       lifecycle verbs, the tickets board end-to-end, machines, and the daemon-unreachable / reconnect /
       never-run edge cases — all pass (no toast flood, graceful reconnect, honest loud verb errors).
 
+### Hardening (round 3 — overnight autonomous run)
+- [x] **4 reported UI bugs** (`64ecc43`): (1) initial-message bubble duplication in pi RPC — freeze the
+      history poll during a UI turn + stable bubble keys so the optimistic copy is swapped, not doubled;
+      (2) chat scroll bled into the page — `overscroll-behavior: contain` on every scroll region;
+      (3) auto-follow — logs stick to the bottom only when already there, with a "↓ latest" jump button;
+      (4) collapse/expand the grid tree (TUI-style fold), persisted in localStorage. (1)+(4) verified live.
+- [x] **Cross-machine chat** (`6ad8ea3`): the transport seam now dials a remote thread's OWNING daemon
+      for rpc/terminal/transcript. `electron/peers.cjs` reads `~/.sesh/peers.json` (token in main); the WS
+      bridge routes per-connection by a `__machine` param; ThreadsScreen renders real chat for a dial-able
+      remote thread (notice only for ssh-only peers / the web build). Proven headlessly against the real
+      mesh (HTTP + a live macstudio terminal routed through the bridge). TERM fix + TCP API now live on
+      macbook, mymain, macstudio. **Pending: final GUI check from the Mac app (Lukas).**
+
 ## Phase 2 — Electron desktop app  · **done**
 
 - [x] **Main-process transport** (`electron/transport.cjs` + `config.cjs` + `main.cjs`): the renderer
