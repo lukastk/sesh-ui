@@ -18,7 +18,10 @@ const authHook = (proxy) => {
   proxy.on('proxyReqWs', (proxyReq) => proxyReq.setHeader('Authorization', `Bearer ${TOKEN}`))
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Electron loads the production build over file:// (win.loadFile), so emit RELATIVE asset
+  // paths for the build (absolute /assets/* would 404 under file://). Dev stays at '/'.
+  base: command === 'build' ? './' : '/',
   plugins: [svelte()],
   server: {
     host: '127.0.0.1',
@@ -36,4 +39,4 @@ export default defineConfig({
       '/v1/threads/terminal': { target: DAEMON, ws: true, changeOrigin: true, configure: authHook },
     },
   },
-})
+}))

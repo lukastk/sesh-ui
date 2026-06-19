@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Graphical client for sesh (desktop Svelte/Electron + Android)",
+  "author": "Lukas Kikuchi <lukas@jackfruiting.com>",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
@@ -25,8 +26,9 @@
     "productName": "sesh-ui",
     "files": ["dist/**", "electron/**", "package.json"],
     "directories": { "output": "dist-electron" },
-    "linux": { "target": "AppImage" },
-    "mac": { "target": "dmg" },
+    "publish": null,
+    "linux": { "target": "AppImage", "category": "Development" },
+    "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
     "win": { "target": "nsis" }
   },
   "dependencies": {
