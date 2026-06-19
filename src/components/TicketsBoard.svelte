@@ -22,7 +22,13 @@
       const r = await poll(api.ticketsAll())
       entries = r.tickets || []
       unreachable = r.unreachable || []
-      if (sel) { const e = entries.find((x) => x.ticket.id === sel.id); if (e) sel = { ...sel, ...e.ticket } }
+      // Reflect EXTERNAL status/binding changes in an open ticket, but NEVER overwrite the fields
+      // the user may be editing in the dialog (name/prompt) — a blanket {...sel, ...e.ticket} merge
+      // on the 3s poll clobbered in-progress edits before they could be saved.
+      if (sel) {
+        const e = entries.find((x) => x.ticket.id === sel.id)
+        if (e) sel = { ...sel, status: e.ticket.status, thread_id: e.ticket.thread_id }
+      }
     } catch {}
   }
   $effect(() => { refresh(); const t = setInterval(refresh, 3000); return () => clearInterval(t) })
