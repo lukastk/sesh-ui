@@ -5,6 +5,7 @@
   import { api, TICKET_STATUSES, TICKET_COLORS } from '../lib/seshClient.js'
   import { shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
+  import { poll } from '../lib/connection.svelte.js'
 
   let entries = $state([])
   let unreachable = $state([])
@@ -15,12 +16,13 @@
   let threadChoices = $state([])
 
   async function refresh() {
+    // Background poll → connection store (one banner), not per-tick toasts; keep last entries.
     try {
-      const r = await api.ticketsAll()
+      const r = await poll(api.ticketsAll())
       entries = r.tickets || []
       unreachable = r.unreachable || []
       if (sel) { const e = entries.find((x) => x.ticket.id === sel.id); if (e) sel = { ...sel, ...e.ticket } }
-    } catch (e) { pushError(e) }
+    } catch {}
   }
   $effect(() => { refresh(); const t = setInterval(refresh, 3000); return () => clearInterval(t) })
 

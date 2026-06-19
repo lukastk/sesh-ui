@@ -6,6 +6,7 @@
   import { api } from '../lib/seshClient.js'
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
+  import { poll } from '../lib/connection.svelte.js'
   import RpcChat from './chat/RpcChat.svelte'
   import Terminal from './chat/Terminal.svelte'
   import HeadlessChat from './chat/HeadlessChat.svelte'
@@ -19,8 +20,10 @@
   let newParent = $state(undefined)  // undefined = modal closed; '' = root; id = child
 
   async function refresh() {
-    try { rows = (await api.grid({ archived: showArchived })).rows || [] }
-    catch (e) { pushError(e) }
+    // Background poll: report reachability to the shared connection store (→ one banner),
+    // never a per-tick toast. On failure keep the last-known rows rather than blanking.
+    try { rows = (await poll(api.grid({ archived: showArchived }))).rows || [] }
+    catch {}
   }
   $effect(() => { showArchived; refresh() })           // immediate refetch when the toggle flips
   $effect(() => { const t = setInterval(refresh, 2500); return () => clearInterval(t) })

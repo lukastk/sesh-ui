@@ -4,6 +4,7 @@
   // reaches the daemon through seshClient — this file never fetches directly.
   import { sesh, api } from './lib/seshClient.js'
   import { toasts, dismiss } from './lib/toasts.svelte.js'
+  import { conn, noteOk, noteFail } from './lib/connection.svelte.js'
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
   import MachinesScreen from './components/MachinesScreen.svelte'
@@ -14,14 +15,13 @@
   let showSettings = $state(false)
 
   let daemon = $state(null)
-  let connErr = $state(null)
   let autoPrompted = $state(false)
 
   async function pollStatus() {
     try {
-      daemon = await api.status(); connErr = null
+      daemon = await api.status(); noteOk()
     } catch (e) {
-      daemon = null; connErr = String(e)
+      daemon = null; noteFail(e)
       // First-run guidance: if we can't reach a daemon AND the user has never chosen an
       // endpoint (we're only guessing the default local socket), open Settings once so they
       // can point the app at their daemon. Only in a packaged transport (web/dev is fixed).
@@ -61,7 +61,9 @@
     {:else if screen === 'machines'}<MachinesScreen />{/if}
   </div>
 
-  {#if connErr && !daemon}
+  <!-- ONE connection banner for an unreachable daemon — driven by the shared connection store
+       that every background poll reports to (never per-poll toasts; that flooded the stack). -->
+  {#if !conn.online}
     <div class="connbanner">
       <div class="cb-head">
         <span>Cannot reach the sesh daemon.</span>
@@ -69,7 +71,7 @@
           <button class="cb-cfg" onclick={() => (showSettings = true)}>Configure connection…</button>
         {/if}
       </div>
-      <code>{connErr}</code>
+      {#if conn.error}<code>{conn.error}</code>{/if}
       {#if sesh.transport === 'web'}
         <small>Start a dev daemon (PLAN.md → "Running a dev daemon") and check vite.config.js endpoint/token.</small>
       {:else}
@@ -85,7 +87,7 @@
     <div class="toasts">
       {#each toasts as t (t.id)}
         <div class="toast {t.kind}">
-          <span class="t-text">{t.text}</span>
+          <span class="t-text">{t.text}{#if t.count > 1}<span class="t-count"> ×{t.count}</span>{/if}</span>
           <button class="t-x" onclick={() => dismiss(t.id)} aria-label="dismiss">×</button>
         </div>
       {/each}
@@ -137,6 +139,7 @@
   .toast.error { background: #3a1c28; color: #ffb4c0; border: 1px solid #5a2030; }
   .toast.info { background: #1b2b1c; color: #c5f0bb; border: 1px solid #2f5a30; }
   .t-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
+  .t-count { opacity: 0.7; font-weight: 700; }
   .t-x { background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; line-height: 1;
     opacity: 0.7; padding: 0; }
   .t-x:hover { opacity: 1; }

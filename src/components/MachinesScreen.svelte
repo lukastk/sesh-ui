@@ -4,12 +4,13 @@
   // dimmed last-known data — never silently stale.
   import { api } from '../lib/seshClient.js'
   import { ago, headGlyph } from '../lib/format.js'
-  import { pushError } from '../lib/toasts.svelte.js'
+  import { poll } from '../lib/connection.svelte.js'
 
   let machines = $state([])
 
   async function refresh() {
-    try { machines = (await api.mesh()).machines || [] } catch (e) { pushError(e) }
+    // Background poll → connection store (one banner), not per-tick toasts; keep last mesh.
+    try { machines = (await poll(api.mesh())).machines || [] } catch {}
   }
   $effect(() => { refresh(); const t = setInterval(refresh, 3000); return () => clearInterval(t) })
 
