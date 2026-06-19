@@ -5,3 +5,7 @@ dist-electron/
 .DS_Store
 .vite/
 .playwright-mcp/
+
+# stress-test screenshots
+*.png
+.playwright-mcp/
