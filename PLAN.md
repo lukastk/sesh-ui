@@ -7,15 +7,17 @@ Status legend: `todo` · `in progress` · `done`.
 
 ---
 
-## Phase 0 — scaffold & transport seam (the spine)  · **in progress**
+## Phase 0 — scaffold & transport seam (the spine)  · **done**
 
 The single most important thing: a clean `seshClient` transport seam. Everything else builds on it.
 
 - [x] Repo scaffold (this commit): Svelte 5 + Vite, package.json, `src/lib/seshClient.js` seam,
       minimal `App.svelte` proving daemon connectivity, Electron main-process stub.
-- [ ] **`seshClient` — dev transport**: `get`/`post` via the Vite proxy (token injected by the proxy,
-      never in the renderer), `wsURL(path)` for the two streaming endpoints. Make `App.svelte` show live
-      daemon status + the thread grid from `GET /v1/threads/grid` against a real dev daemon (proof of life).
+- [x] **`seshClient` — dev transport**: `get`/`post` via the Vite proxy (token injected by the proxy in
+      the http-proxy `proxyReq`/`proxyReqWs` hooks, never in the renderer), `wsURL(path)` for the two
+      streaming endpoints. `App.svelte` shows live daemon status; the threads grid renders from
+      `GET /v1/threads/grid` against a real dev daemon (verified live — RPC, terminal, headless all
+      round-tripped in the browser).
 - [ ] **`seshClient` — Electron transport**: renderer → `window.sesh` (contextBridge) → main process
       does `http.request({ socketPath })` for the local unix socket (no token) OR TCP+token for a remote
       daemon (token held ONLY in main, via `safeStorage`). WebSockets: decide main-proxy vs.
@@ -23,21 +25,28 @@ The single most important thing: a clean `seshClient` transport seam. Everything
 - [ ] Settings: endpoint (local socket / remote `host:port`) + token entry, persisted (keychain in
       Electron). A "connection" indicator in the UI.
 
-## Phase 1 — the screens (port the prototype, rewrite — don't copy)
+## Phase 1 — the screens (port the prototype, rewrite — don't copy)  · **done**
 
 Reference: `~/mysetup/sesh/_dev/experiments/03_svelte_shell/` + `FEATURE_UI_MAP.md`.
+All five screens rewritten (not copied) from the prototype and verified live in the browser against the
+dev daemon. Loud errors via a persistent toast store (`src/lib/toasts.svelte.js`, separate from the
+poll model), honest state glyphs (incl. loud `?` for unknown axes — `src/lib/format.js`), and an honest
+RPC default (idle-headless pi has no live rpc-socket → defaults to transcript, RPC stays selectable).
 
-- [ ] **Threads grid (home)**: live `GET /v1/threads/grid` poll, state glyphs (head/busy), filter,
-      parent/child, row actions (new/resume/stop/archive/rename/delete), ticket badges.
-- [ ] **Thread detail + the two chat surfaces**:
-      - pi → **RPC streaming bubbles** (`GET /v1/threads/rpc` WebSocket).
-      - headful claude/codex (and pi raw) → **xterm.js terminal** (`GET /v1/threads/terminal` WebSocket).
-      - headless claude/codex → **transcript bubbles** (send-headless + poll + transcript; per-agent parsers).
-- [ ] **New-thread modal** (`POST /v1/threads`): agent/name/cwd/headless. Use the **fs picker**
-      (`GET /v1/fs/list`, already on sesh) for cwd.
-- [ ] **Tickets board** (kanban): `GET /v1/tickets/list-all`, create, status switcher
-      (`/v1/tickets/status`), prompt editor (`/v1/tickets/set`), send-to-thread (`/v1/tickets/send-prompt`).
-- [ ] **Machines/mesh**: `GET /v1/mesh` — reachability + freshness + per-machine threads.
+- [x] **Threads grid (home)**: live `GET /v1/threads/grid` poll, state glyphs (head/busy/`?`),
+      fuzzy filter, archived toggle, parent/child tree, ticket badges (incl. needs-input), detail/row
+      actions (new/+child/resume/headful/stop/archive/rename/delete).
+- [x] **Thread detail + the two chat surfaces** (auto-selected per shape + manual switcher):
+      - pi (live process) → **RPC streaming bubbles** (`GET /v1/threads/rpc` WebSocket) — verified `RPC-UI-OK`.
+      - headful claude/codex (and pi raw) → **xterm.js terminal** (`GET /v1/threads/terminal` WebSocket) — verified live ANSI.
+      - headless claude/codex (and idle headless pi) → **transcript bubbles** (send-headless + poll + transcript; per-agent parsers) — verified `HEADLESS-UI-OK`.
+- [x] **New-thread modal** (`POST /v1/threads`): agent/name/cwd/headless/mode/initial-msg, cwd via the
+      **fs picker** (`GET /v1/fs/list`, ~-relative paths) — verified by creating a thread from the UI.
+- [x] **Tickets board** (kanban): `GET /v1/tickets/list-all`, create, status switcher
+      (`/v1/tickets/status`) with bind-to-thread picker for `active`, prompt editor (`/v1/tickets/set`),
+      send-to-thread (`/v1/tickets/send-prompt`), unbind, delete.
+- [x] **Machines/mesh**: `GET /v1/mesh` — reachability dot + freshness + per-machine threads (offline =
+      visibly dimmed last-known, never silently stale).
 
 ## Phase 2 — Electron desktop app
 

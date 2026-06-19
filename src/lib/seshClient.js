@@ -1,15 +1,28 @@
 // seshClient — the ONE door to the sesh daemon API. Every component goes through this;
-// no raw fetch/WebSocket elsewhere. It hides the transport behind get/post/wsURL:
+// no raw fetch/WebSocket lives anywhere else (a standing project rule). It hides the
+// transport behind get/post/wsURL:
 //
 //   - web/dev:  goes through the Vite dev proxy (which injects the bearer token, so the
 //               renderer never holds it). See vite.config.js.
 //   - electron: window.sesh.* (contextBridge → main process: unix socket local / TCP+token
-//               remote, token only in main).  [Phase 0 — to implement]
+//               remote, token only in main).  [Phase 2]
 //   - android:  native HTTP plugin.  [Phase 3]
 //
 // Detection: if the Electron preload exposed `window.sesh`, use it; else assume web/dev.
 
 const electron = typeof window !== 'undefined' && window.sesh
+
+// Build a /v1 query string from an object, dropping null/undefined/'' values.
+function qs(params) {
+  if (!params) return ''
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v === null || v === undefined || v === '') continue
+    p.set(k, String(v))
+  }
+  const s = p.toString()
+  return s ? '?' + s : ''
+}
 
 async function webGet(path) {
   const r = await fetch('/api' + path)
@@ -47,17 +60,59 @@ export const sesh = {
   },
 }
 
-// Convenience wrappers for the endpoints the UI uses most. Add to these as screens land.
+// Named wrappers for every endpoint a screen touches. The daemon owns naming/routing/state;
+// these just shape the request/response — no client-side re-derivation of daemon logic.
 export const api = {
+  // ── daemon / mesh ────────────────────────────────────────────────────────
   status: () => sesh.get('/status'),
   health: () => sesh.get('/health'),
-  grid: () => sesh.get('/threads/grid'),
   mesh: () => sesh.get('/mesh'),
+
+  // ── threads: grid & lifecycle ────────────────────────────────────────────
+  grid: (opts = {}) => sesh.get('/threads/grid' + qs({ archived: opts.archived, 'all-machines': opts.allMachines })),
+  threadList: (opts = {}) => sesh.get('/threads' + qs({ archived: opts.archived, 'all-machines': opts.allMachines })),
+  threadStatus: (id) => sesh.get('/threads/status' + qs({ id })),
   threadNew: (req) => sesh.post('/threads', req),
-  // tickets
+  resume: (id) => sesh.post('/threads/resume', { id }),
+  headful: (id) => sesh.post('/threads/headful', { id }),
+  stop: (id) => sesh.post('/threads/stop', { id }),
+  archive: (id, archived) => sesh.post('/threads/archive', { id, archived }),
+  rename: (id, name) => sesh.post('/threads/rename', { id, name }),
+  reparent: (id, parent) => sesh.post('/threads/reparent', { id, parent }),
+  del: (id, force) => sesh.post('/threads/delete', { id, force }),
+  notify: (id, on) => sesh.post('/threads/notify', { id, on }),
+
+  // ── threads: chat ────────────────────────────────────────────────────────
+  transcript: (id, tail = 200) => sesh.get('/threads/transcript' + qs({ id, tail })),
+  send: (id, text) => sesh.post('/threads/send', { id, text }),
+  sendHeadless: (id, text) => sesh.post('/threads/send-headless', { id, text }),
+  headlessReply: (id) => sesh.get('/threads/headless-reply' + qs({ id })),
+  capture: (id, lines = 0) => sesh.get('/threads/capture' + qs({ id, lines })),
+
+  // ── filesystem picker (cwd) ──────────────────────────────────────────────
+  fsList: (path) => sesh.get('/fs/list' + qs({ path })),
+
+  // ── tickets ──────────────────────────────────────────────────────────────
   ticketsAll: () => sesh.get('/tickets/list-all'),
-  // streaming endpoints return WS URLs, not data:
+  ticketGet: (id) => sesh.get('/tickets/get' + qs({ id })),
+  ticketCreate: (name, prompt) => sesh.post('/tickets', { name, prompt }),
+  ticketSet: (id, fields) => sesh.post('/tickets/set', { id, ...fields }),
+  ticketSetStatus: (id, status, threadId, note) =>
+    sesh.post('/tickets/status', { id, status, thread_id: threadId || undefined, note: note || undefined }),
+  ticketDelete: (id) => sesh.post('/tickets/delete', { id }),
+  ticketSendPrompt: (id) => sesh.post('/tickets/send-prompt', { id }),
+  ticketUnbind: (id) => sesh.post('/tickets/unbind', { id }),
+
+  // ── blobs ────────────────────────────────────────────────────────────────
+  blobAdd: (name, base64) => sesh.post('/blobs', { name, data: base64 }),
+
+  // ── streaming endpoints (return WS URLs, not data) ───────────────────────
   rpcURL: (id) => sesh.wsURL(`/v1/threads/rpc?id=${encodeURIComponent(id)}`),
   terminalURL: (id, cols, rows) =>
     sesh.wsURL(`/v1/threads/terminal?id=${encodeURIComponent(id)}&cols=${cols}&rows=${rows}`),
+}
+
+export const TICKET_STATUSES = ['triage', 'ready', 'active', 'done', 'dropped']
+export const TICKET_COLORS = {
+  triage: '#565f89', ready: '#7aa2f7', active: '#e0af68', done: '#9ece6a', dropped: '#f7768e',
 }
