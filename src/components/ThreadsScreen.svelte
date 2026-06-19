@@ -199,6 +199,8 @@
           {/if}
           <button onclick={() => (newParent = selected.id)} title="new child thread">+ Child</button>
           <button onclick={() => (forkTarget = selected)} title="branch this conversation into a new thread">Fork</button>
+          <button onclick={() => act('notify', () => api.notify(selected.id, !selected.notify))}
+            title={selected.notify ? 'notifications on — click to mute' : 'notifications muted — click to enable'}>{selected.notify ? '🔔' : '🔕'}</button>
           <button onclick={() => (renameTarget = selected)}>Rename</button>
           <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
           <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
