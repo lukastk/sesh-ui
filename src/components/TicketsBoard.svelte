@@ -6,6 +6,7 @@
   import { shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll } from '../lib/connection.svelte.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
 
   let entries = $state([])
   let unreachable = $state([])
@@ -67,8 +68,9 @@
     try { await api.ticketUnbind(sel.id); await refresh(); sel = entries.find((e) => e.ticket.id === sel.id)?.ticket ?? sel }
     catch (e) { pushError(e) }
   }
+  let confirmDel = $state(false)
   async function del() {
-    if (!confirm('Delete this ticket?')) return
+    confirmDel = false
     try { await api.ticketDelete(sel.id); sel = null; await refresh() } catch (e) { pushError(e) }
   }
 </script>
@@ -128,7 +130,7 @@
           <button onclick={sendPrompt} disabled={!sel.thread_id}>Send to thread</button>
           {#if sel.thread_id}<button onclick={unbind}>Unbind</button>{/if}
           <div class="spacer"></div>
-          <button class="danger" onclick={del}>Delete</button>
+          <button class="danger" onclick={() => (confirmDel = true)}>Delete</button>
           <button onclick={() => (sel = null)}>Close</button>
         </div>
       </div>
@@ -152,6 +154,12 @@
         <div class="d-actions"><button onclick={() => (bindFor = null)}>Cancel</button></div>
       </div>
     </div>
+  {/if}
+
+  {#if confirmDel}
+    <ConfirmDialog title="Delete ticket?" danger confirmLabel="Delete"
+      message={`"${sel?.name || 'this ticket'}" will be removed.`}
+      onconfirm={del} oncancel={() => (confirmDel = false)} />
   {/if}
 </div>
 

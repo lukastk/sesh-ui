@@ -11,6 +11,8 @@
   import Terminal from './chat/Terminal.svelte'
   import HeadlessChat from './chat/HeadlessChat.svelte'
   import NewThreadModal from './NewThreadModal.svelte'
+  import PromptDialog from './PromptDialog.svelte'
+  import ConfirmDialog from './ConfirmDialog.svelte'
 
   let rows = $state([])
   let selectedId = $state(null)
@@ -18,6 +20,8 @@
   let filter = $state('')
   let showArchived = $state(false)
   let newParent = $state(undefined)  // undefined = modal closed; '' = root; id = child
+  let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
+  let deleteTarget = $state(null)    // thread pending delete confirmation
 
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
@@ -66,15 +70,16 @@
     try { await fn(); await refresh() }
     catch (e) { pushError(`${label}: ${e.message ?? e}`) }
   }
-  async function rename(r) {
-    const name = prompt('Rename thread', r.name || '')
-    if (name == null) return
+  async function doRename(name) {
+    const r = renameTarget
+    renameTarget = null
+    if (name == null || name === r.name) return
     await act('rename', () => api.rename(r.id, name))
   }
-  async function del(r) {
+  async function doDelete() {
+    const r = deleteTarget
+    deleteTarget = null
     const force = r.head === 'headful'
-    const warn = force ? ' Its runtime is LIVE — this orphans the agent (--force).' : ' (record only)'
-    if (!confirm(`Delete thread "${r.name || shortId(r.id)}"?${warn}`)) return
     try {
       await api.del(r.id, force)
       if (selectedId === r.id) selectedId = null
@@ -150,9 +155,9 @@
             <button onclick={() => act('headful', () => api.headful(selected.id))}>Headful</button>
           {/if}
           <button onclick={() => (newParent = selected.id)} title="new child thread">+ Child</button>
-          <button onclick={() => rename(selected)}>Rename</button>
+          <button onclick={() => (renameTarget = selected)}>Rename</button>
           <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
-          <button class="danger" onclick={() => del(selected)}>Delete</button>
+          <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
         </div>
       </header>
       <section class="surface">
@@ -169,6 +174,18 @@
 
   {#if newParent !== undefined}
     <NewThreadModal parent={newParent} onclose={() => (newParent = undefined)} oncreated={onCreated} />
+  {/if}
+
+  {#if renameTarget}
+    <PromptDialog title="Rename thread" label="Name" value={renameTarget.name || ''}
+      placeholder="(nameless)" confirmLabel="Rename"
+      onsubmit={doRename} oncancel={() => (renameTarget = null)} />
+  {/if}
+
+  {#if deleteTarget}
+    <ConfirmDialog title="Delete thread?" danger confirmLabel="Delete"
+      message={`"${deleteTarget.name || shortId(deleteTarget.id)}" — ${deleteTarget.head === 'headful' ? 'its runtime is LIVE; this orphans the agent (--force).' : 'the record only.'}`}
+      onconfirm={doDelete} oncancel={() => (deleteTarget = null)} />
   {/if}
 </div>
 
