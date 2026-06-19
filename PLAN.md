@@ -73,6 +73,21 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 - [x] **Launcher defaults to the real daemon** — `launch-sesh-ui.command` points the app at the real local
       `~/.sesh/daemon.sock` (normal use); the isolated demo daemon + demo threads are behind `SESHUI_DEMO=1`.
 
+### Hardening (round 2 — Lukas stress test, driven live via Playwright; see `STRESSTEST.md`)
+- [x] **BUG 1 — headful claude/codex Terminal "terminal does not support clear"** (sesh-side): the daemon
+      now forces `TERM=xterm-256color` in the UI-terminal attach pty (sesh `047467e`, deployed to macbook;
+      still to roll out to other machines' daemons). Verified live: claude + codex xterm render fully.
+- [x] **BUG 2 — pi RPC chat dropped TUI-typed turns + lost history on switch**: RPC chat is now
+      transcript-backed — load + poll the transcript (source of truth, incl. TUI-typed turns) and overlay
+      the live socket stream for the in-flight UI turn, de-duplicated. History persists across switches.
+- [x] **Tickets poll clobbered in-progress edits** (found in stress test): the 3s board refresh merged the
+      daemon's ticket over the open dialog, wiping unsaved name/prompt edits. Now syncs only status/binding.
+- [x] **Shared transcript parser** (`src/lib/transcript.js`): the three agents' JSONL decode lives in one
+      place (HeadlessChat + RpcChat), instead of duplicated per surface.
+- [x] **Full stress pass**: every chat surface (pi RPC, claude/codex Terminal, headless Transcript), all
+      lifecycle verbs, the tickets board end-to-end, machines, and the daemon-unreachable / reconnect /
+      never-run edge cases — all pass (no toast flood, graceful reconnect, honest loud verb errors).
+
 ## Phase 2 — Electron desktop app  · **done**
 
 - [x] **Main-process transport** (`electron/transport.cjs` + `config.cjs` + `main.cjs`): the renderer
