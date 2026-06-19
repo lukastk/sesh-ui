@@ -6,7 +6,7 @@
   import { api } from '../lib/seshClient.js'
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
-  import { poll } from '../lib/connection.svelte.js'
+  import { poll, conn } from '../lib/connection.svelte.js'
   import RpcChat from './chat/RpcChat.svelte'
   import Terminal from './chat/Terminal.svelte'
   import HeadlessChat from './chat/HeadlessChat.svelte'
@@ -19,6 +19,9 @@
   let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
   let filter = $state('')
   let showArchived = $state(false)
+  // Default ON: show the WHOLE mesh (matches `sesh tui`, whose wrapper adds --all-machines).
+  // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
+  let showAllMachines = $state(true)
   let newParent = $state(undefined)  // undefined = modal closed; '' = root; id = child
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
   let deleteTarget = $state(null)    // thread pending delete confirmation
@@ -26,13 +29,17 @@
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
     // never a per-tick toast. On failure keep the last-known rows rather than blanking.
-    try { rows = (await poll(api.grid({ archived: showArchived }))).rows || [] }
+    try { rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || [] }
     catch {}
   }
-  $effect(() => { showArchived; refresh() })           // immediate refetch when the toggle flips
+  $effect(() => { showArchived; showAllMachines; refresh() })   // immediate refetch when a toggle flips
   $effect(() => { const t = setInterval(refresh, 2500); return () => clearInterval(t) })
 
   let selected = $derived(rows.find((r) => r.id === selectedId) || null)
+  // The app has ONE transport (the connected daemon). A thread on ANOTHER machine can't be chatted
+  // with here — its rpc/terminal pane lives on that daemon and even its transcript is local-store
+  // only — so dialing would 404/409. We gate the CHAT surface (not the grid) behind a clear notice.
+  let isRemote = $derived(!!(selected && conn.machine && selected.machine !== conn.machine))
 
   // Build the flattened, depth-annotated tree for display (DFS from roots; a row whose parent
   // isn't in the current set is treated as a root so nothing is orphaned out of view).
@@ -110,6 +117,7 @@
     <div class="controls">
       <input class="filter" bind:value={filter} placeholder="filter…" />
       <label class="arch"><input type="checkbox" bind:checked={showArchived} /> archived</label>
+      <label class="arch" title="show threads from every machine in the mesh (like sesh tui)"><input type="checkbox" bind:checked={showAllMachines} /> all&nbsp;machines</label>
     </div>
     <div class="list">
       {#each filtered as { row, depth } (row.id)}
@@ -119,6 +127,7 @@
           <span class="st">{stateLabel(row)}</span>
           <span class="agent">
             {row.agent_kind}
+            {#if conn.machine && row.machine !== conn.machine}<span class="mach" title="lives on {row.machine}">⌘ {row.machine}</span>{/if}
             {#if row.tickets_open}<span class="tkt" class:needs={row.ticket_needs_input}>🎫{row.tickets_open}</span>{/if}
           </span>
         </button>
@@ -138,6 +147,7 @@
           <span class="sub">{selected.agent_kind} · {stateLabel(selected)} · {selected.cwd_rel || selected.cwd}</span>
         </div>
         <div class="actions">
+          {#if !isRemote}
           <div class="seg">
             {#if selected.agent_kind === 'pi'}
               <button class:on={surface === 'rpc'} class:muted={!rpcLive(selected)} onclick={() => (mode = 'rpc')}
@@ -148,6 +158,7 @@
             {/if}
             <button class:on={surface === 'headless'} onclick={() => (mode = 'headless')}>Transcript</button>
           </div>
+          {/if}
           {#if selected.head === 'headful'}
             <button onclick={() => act('stop', () => api.stop(selected.id))}>Stop</button>
           {:else}
@@ -161,7 +172,18 @@
         </div>
       </header>
       <section class="surface">
-        {#if surface === 'rpc'}
+        {#if isRemote}
+          <div class="remote-notice">
+            <div class="rn-emoji">🌐</div>
+            <div class="rn-title">This thread lives on <b>{selected.machine}</b>.</div>
+            <div class="rn-body">
+              You're connected to <b>{conn.machine}</b>. Cross-machine chat isn't wired up yet — the
+              live RPC/terminal pane and the transcript are served by that thread's own daemon. It
+              still shows here in the grid, tickets and machines; only its chat is unavailable from
+              this connection.
+            </div>
+          </div>
+        {:else if surface === 'rpc'}
           {#key selected.id + mode}<RpcChat threadId={selected.id} />{/key}
         {:else if surface === 'terminal'}
           {#key selected.id}<Terminal threadId={selected.id} />{/key}
@@ -211,6 +233,7 @@
   .row .archtag { color: #565f89; font-size: 10px; }
   .row .st { font-size: 10px; color: #9aa5ce; text-align: right; }
   .row .agent { grid-column: 2 / span 2; font-size: 10px; color: #565f89; display: flex; gap: 6px; align-items: center; }
+  .row .mach { color: #7dcfff; background: #142733; border: 1px solid #1e3a4a; border-radius: 4px; padding: 0 4px; }
   .row .tkt { color: #e0af68; }
   .row .tkt.needs { color: #f7768e; }
   .empty, .placeholder { color: #565f89; padding: 20px; }
@@ -232,5 +255,11 @@
   .actions > button:hover { background: #232433; }
   .actions .danger { color: #ffb4c0; border-color: #5a2030; }
   .surface { flex: 1; min-height: 0; }
+  .remote-notice { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; text-align: center; padding: 24px; max-width: 560px; margin: 0 auto; }
+  .remote-notice .rn-emoji { font-size: 34px; }
+  .remote-notice .rn-title { font-size: 16px; color: #c0caf5; }
+  .remote-notice .rn-title b, .remote-notice .rn-body b { color: #7dcfff; }
+  .remote-notice .rn-body { font-size: 13px; color: #9aa5ce; line-height: 1.55; }
   .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 14px; }
 </style>

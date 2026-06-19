@@ -6,7 +6,10 @@
 // `online` flips false on the first failed poll and true again on the first success, so
 // daemon-down → reconnect is graceful with no manual dismissal.
 
-export const conn = $state({ online: true, error: null })
+// `machine` is the name of the daemon the app is CONNECTED to (from /status). The app has one
+// transport, so a thread whose row.machine differs from this lives on another daemon — the grid
+// still shows it, but its rpc/terminal/transcript chat can't be served here (gated in the UI).
+export const conn = $state({ online: true, error: null, machine: null })
 
 // A poll succeeded — clear any outage.
 export function noteOk() {

@@ -19,7 +19,7 @@
 
   async function pollStatus() {
     try {
-      daemon = await api.status(); noteOk()
+      daemon = await api.status(); noteOk(); conn.machine = daemon.machine
     } catch (e) {
       daemon = null; noteFail(e)
       // First-run guidance: if we can't reach a daemon AND the user has never chosen an
