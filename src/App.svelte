@@ -7,9 +7,11 @@
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
   import MachinesScreen from './components/MachinesScreen.svelte'
+  import SettingsModal from './components/SettingsModal.svelte'
 
   const tabs = [['threads', 'Threads'], ['tickets', 'Tickets'], ['machines', 'Machines']]
   let screen = $state('threads')
+  let showSettings = $state(false)
 
   let daemon = $state(null)
   let connErr = $state(null)
@@ -39,6 +41,7 @@
         <span class="txt err">daemon unreachable</span>
       {/if}
     </div>
+    <button class="gear" onclick={() => (showSettings = true)} title="Connection settings" aria-label="settings">⚙</button>
   </nav>
 
   <div class="body">
@@ -53,6 +56,8 @@
       <small>Start a dev daemon (PLAN.md → "Running a dev daemon") and check vite.config.js endpoint/token.</small>
     </div>
   {/if}
+
+  {#if showSettings}<SettingsModal onclose={() => (showSettings = false)} />{/if}
 
   <!-- Global loud action errors — persistent, dismissed explicitly, above the poll model. -->
   {#if toasts.length}
@@ -89,6 +94,8 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; }
   .dot.ok { background: #9ece6a; box-shadow: 0 0 6px #9ece6a88; }
   .dot.bad { background: #f7768e; }
+  .gear { background: none; border: 0; color: #565f89; cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 6px; }
+  .gear:hover { background: #16161e; color: #9aa5ce; }
 
   .body { flex: 1; min-height: 0; }
 

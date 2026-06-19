@@ -51,12 +51,27 @@ export const sesh = {
     return electron ? window.sesh.post(path, body) : webPost(path, body)
   },
   // A WebSocket URL for a streaming endpoint (the two daemon WS endpoints:
-  // /v1/threads/rpc, /v1/threads/terminal). In web/dev the Vite proxy injects the token;
-  // in Electron the main process supplies an authenticated URL/socket.
+  // /v1/threads/rpc, /v1/threads/terminal). In web/dev the Vite proxy injects the token; in
+  // Electron the renderer dials main's loopback bridge (wsBase), which injects auth upstream —
+  // so the token stays out of the renderer for ws exactly as for http.
   wsURL(path) {
-    if (electron) return window.sesh.wsURL(path)
+    if (electron) return window.sesh.wsBase + path
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     return `${proto}://${location.host}${path}`
+  },
+
+  // Connection settings (endpoint + token). In Electron these round-trip to the main process
+  // (the token is write-only — getConfig never returns its value). In web/dev the endpoint is
+  // the fixed Vite proxy, so the config is read-only.
+  getConfig() {
+    return electron
+      ? window.sesh.getConfig()
+      : Promise.resolve({ mode: 'web', target: 'Vite dev proxy', hasToken: false, editable: false })
+  },
+  setConfig(cfg) {
+    return electron
+      ? window.sesh.setConfig(cfg)
+      : Promise.reject(new Error('endpoint is fixed in web/dev mode (configure vite.config.js)'))
   },
 }
 

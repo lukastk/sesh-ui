@@ -48,11 +48,21 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 - [x] **Machines/mesh**: `GET /v1/mesh` — reachability dot + freshness + per-machine threads (offline =
       visibly dimmed last-known, never silently stale).
 
-## Phase 2 — Electron desktop app
+## Phase 2 — Electron desktop app  · **in progress**
 
-- [ ] Electron shell wrapping the Svelte build; the Phase-0 main-process transport; node-pty option for a
-      local terminal if the daemon WS isn't reachable (optional — the daemon WS is the primary path).
-- [ ] Packaging (electron-builder): a real desktop app. Token provisioning UX (paste/QR).
+- [x] **Main-process transport** (`electron/transport.cjs` + `config.cjs` + `main.cjs`): the renderer
+      reaches the daemon ONLY through main — `ipcRenderer.invoke('sesh:get'|'sesh:post')` for HTTP
+      (unix socket local / TCP+token remote), and a **loopback WS bridge** for rpc/terminal (a renderer
+      WebSocket can't set headers or dial a unix socket, so main proxies the upgrade and injects
+      auth/socketPath upstream). The bearer token lives ONLY in main, encrypted at rest via `safeStorage`.
+      Endpoint+token configurable via a **Settings modal** (`SettingsModal.svelte`; token write-only).
+      Verified: transport module headlessly against the dev daemon (both transports, RPC + terminal
+      bridge round-trips, loud rejects); the full Electron app booting under xvfb (live grid + daemon
+      header through IPC, token only in main).
+- [ ] node-pty option for a local terminal if the daemon WS isn't reachable (optional — the daemon WS
+      is the primary path).
+- [ ] Packaging (electron-builder): a real desktop app. Token provisioning UX (paste/QR). [config in
+      package.json `build`; needs a real-display/CI run to produce installers]
 
 ## Phase 3 — Android
 
