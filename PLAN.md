@@ -48,21 +48,29 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 - [x] **Machines/mesh**: `GET /v1/mesh` — reachability dot + freshness + per-machine threads (offline =
       visibly dimmed last-known, never silently stale).
 
-## Phase 2 — Electron desktop app  · **in progress**
+## Phase 2 — Electron desktop app  · **done**
 
 - [x] **Main-process transport** (`electron/transport.cjs` + `config.cjs` + `main.cjs`): the renderer
       reaches the daemon ONLY through main — `ipcRenderer.invoke('sesh:get'|'sesh:post')` for HTTP
       (unix socket local / TCP+token remote), and a **loopback WS bridge** for rpc/terminal (a renderer
       WebSocket can't set headers or dial a unix socket, so main proxies the upgrade and injects
       auth/socketPath upstream). The bearer token lives ONLY in main, encrypted at rest via `safeStorage`.
-      Endpoint+token configurable via a **Settings modal** (`SettingsModal.svelte`; token write-only).
       Verified: transport module headlessly against the dev daemon (both transports, RPC + terminal
       bridge round-trips, loud rejects); the full Electron app booting under xvfb (live grid + daemon
       header through IPC, token only in main).
-- [ ] node-pty option for a local terminal if the daemon WS isn't reachable (optional — the daemon WS
-      is the primary path).
-- [ ] Packaging (electron-builder): a real desktop app. Token provisioning UX (paste/QR). [config in
-      package.json `build`; needs a real-display/CI run to produce installers]
+- [x] **Token provisioning UX** (`SettingsModal.svelte` + the nav ⚙ + first-run auto-open): set the
+      endpoint (local socket / remote host:port) + token; token is write-only (never read back to the
+      renderer). On an unreachable, unconfigured first run the Settings open automatically and the
+      banner offers "Configure connection…". Verified end-to-end over CDP: save → window reloads →
+      reconnects to the dev daemon; renderer `getConfig` shows `hasToken` but never the value.
+- [x] **Packaging** (`electron-builder`): `npm run electron:build` → **Linux AppImage built AND booted**
+      under xvfb (renders the live app through its bundled main process). `base:'./'` for the build so
+      file:// asset paths resolve. mac dmg / win nsis are configured in `package.json` `build` but must
+      be built on those OSes / CI (electron-builder is host-OS-only) — documented in README.
+- [x] **node-pty local terminal — deliberately skipped** (not needed). The daemon WS terminal is the
+      single terminal path (agent-agnostic, detach-safe, cross-machine); a node-pty fallback would only
+      reach local panes, duplicate server-side detach-safety, and add a per-Electron-version native
+      module, for a case where an unreachable daemon already breaks the rest of the app. Rationale in README.
 
 ## Phase 3 — Android
 
