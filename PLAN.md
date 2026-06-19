@@ -125,10 +125,20 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
       reach local panes, duplicate server-side detach-safety, and add a per-Electron-version native
       module, for a case where an unreachable daemon already breaks the rest of the app. Rationale in README.
 
-## Phase 3 — Android
+## Phase 3 — Android  · **scaffolded, blocked on build env**
 
-- [ ] Capacitor (or Tauri-mobile) shell; **native HTTP** to a remote hub daemon over tailscale (NOT
-      WebView fetch — CORS); token in Android Keystore; primary + fallback endpoint.
+See **`ANDROID.md`** for the full design + remaining steps. mymain has no JDK/Android SDK/gradle/phone,
+so the native project can't be generated/built there — but everything that doesn't need the SDK is done.
+
+- [x] **Seam ready**: `seshClient` detects a native `window.SeshNative` bridge (`transport: 'android'`)
+      and routes get/post/wsURL/peerInfo/getConfig/setConfig through it, mirroring the Electron
+      `window.sesh` contextBridge 1:1 — so NO renderer changes are needed when the native side lands.
+- [x] **`capacitor.config.json`** (wraps the existing `dist/` build).
+- [ ] **Native bridge plugin** (Kotlin): native HTTP to a remote hub daemon over tailscale (NOT WebView
+      fetch — CORS); bearer token in the Android Keystore (never the WebView); a loopback WS proxy for
+      rpc/terminal; primary + fallback endpoint. Contract documented in ANDROID.md.
+- [ ] `npx cap add android` + toolchain (JDK 17, Android SDK, gradle) on an SDK-equipped machine; run on
+      the user's phone (host as android-main over adb / the android-control skill).
 - [ ] Offline: last-snapshot cache (mesh/grid JSON) rendered with a loud staleness banner; writes require
       connectivity and fail loudly.
 

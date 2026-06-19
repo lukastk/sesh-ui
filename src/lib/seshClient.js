@@ -6,11 +6,15 @@
 //               renderer never holds it). See vite.config.js.
 //   - electron: window.sesh.* (contextBridge → main process: unix socket local / TCP+token
 //               remote, token only in main).  [Phase 2]
-//   - android:  native HTTP plugin.  [Phase 3]
+//   - android:  a native bridge `window.SeshNative` (a Capacitor plugin) does native HTTP to a
+//               remote hub daemon over tailscale; the bearer token lives in the Android Keystore,
+//               never the WebView — exactly mirroring electron's main-process `window.sesh`. The
+//               plugin exposes the SAME shape (get/post/wsBase/peerInfo/getConfig/setConfig). [Phase 3]
 //
-// Detection: if the Electron preload exposed `window.sesh`, use it; else assume web/dev.
+// Detection: Electron preload `window.sesh` → electron; native `window.SeshNative` → android; else web/dev.
 
 const electron = typeof window !== 'undefined' && window.sesh
+const native = typeof window !== 'undefined' && window.SeshNative   // Android (Capacitor) native bridge
 
 // Build a /v1 query string from an object, dropping null/undefined/'' values.
 function qs(params) {
@@ -45,23 +49,29 @@ async function webPost(path, body) {
 }
 
 export const sesh = {
-  transport: electron ? 'electron' : 'web',
+  transport: electron ? 'electron' : native ? 'android' : 'web',
 
   // GET /v1<path>  → parsed JSON. `machine` (optional) routes to a peer daemon for cross-machine
   // chat (Electron only — main holds the peer token); web/dev is a fixed single-daemon proxy.
   get(path, machine) {
-    return electron ? window.sesh.get(path, machine) : webGet(path)
+    if (electron) return window.sesh.get(path, machine)
+    if (native) return window.SeshNative.get(path, machine)
+    return webGet(path)
   },
   // POST /v1<path> with a JSON body → parsed JSON. `machine` as for get().
   post(path, body, machine) {
-    return electron ? window.sesh.post(path, body, machine) : webPost(path, body)
+    if (electron) return window.sesh.post(path, body, machine)
+    if (native) return window.SeshNative.post(path, body, machine)
+    return webPost(path, body)
   },
   // A WebSocket URL for a streaming endpoint (the two daemon WS endpoints:
   // /v1/threads/rpc, /v1/threads/terminal). In web/dev the Vite proxy injects the token; in
   // Electron the renderer dials main's loopback bridge (wsBase), which injects auth upstream —
   // so the token stays out of the renderer for ws exactly as for http.
   wsURL(path, machine) {
-    if (electron) return window.sesh.wsBase + path + (machine ? `&__machine=${encodeURIComponent(machine)}` : '')
+    const suffix = machine ? `&__machine=${encodeURIComponent(machine)}` : ''
+    if (electron) return window.sesh.wsBase + path + suffix
+    if (native) return window.SeshNative.wsBase + path + suffix
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     return `${proto}://${location.host}${path}`
   },
@@ -69,21 +79,23 @@ export const sesh = {
   // Cross-machine reach: the machine we're connected to + the peer machines we can dial for chat.
   // Web/dev can't dial peers (the proxy is fixed), so it reports none.
   peerInfo() {
-    return electron ? window.sesh.peerInfo() : Promise.resolve({ connected: null, peers: [] })
+    if (electron) return window.sesh.peerInfo()
+    if (native) return window.SeshNative.peerInfo()
+    return Promise.resolve({ connected: null, peers: [] })
   },
 
   // Connection settings (endpoint + token). In Electron these round-trip to the main process
   // (the token is write-only — getConfig never returns its value). In web/dev the endpoint is
   // the fixed Vite proxy, so the config is read-only.
   getConfig() {
-    return electron
-      ? window.sesh.getConfig()
-      : Promise.resolve({ mode: 'web', target: 'Vite dev proxy', hasToken: false, editable: false })
+    if (electron) return window.sesh.getConfig()
+    if (native) return window.SeshNative.getConfig()
+    return Promise.resolve({ mode: 'web', target: 'Vite dev proxy', hasToken: false, editable: false })
   },
   setConfig(cfg) {
-    return electron
-      ? window.sesh.setConfig(cfg)
-      : Promise.reject(new Error('endpoint is fixed in web/dev mode (configure vite.config.js)'))
+    if (electron) return window.sesh.setConfig(cfg)
+    if (native) return window.SeshNative.setConfig(cfg)
+    return Promise.reject(new Error('endpoint is fixed in web/dev mode (configure vite.config.js)'))
   },
 }
 
