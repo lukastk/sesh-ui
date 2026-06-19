@@ -8,7 +8,7 @@
 const { app, BrowserWindow, ipcMain, safeStorage } = require('electron')
 const path = require('node:path')
 const { createTransport } = require('./transport.cjs')
-const { resolveConfig, saveConfig, publicConfig } = require('./config.cjs')
+const { resolveConfig, saveConfig, publicConfig, isConfigured } = require('./config.cjs')
 
 let cfg = null          // resolved runtime config { socketPath } | { host, port, token }
 let transport = null    // createTransport(cfg)
@@ -41,7 +41,7 @@ ipcMain.handle('sesh:post', (_e, p, body) => transport.request(p, 'POST', body))
 // WS base — synchronous so seshClient.wsURL() can stay synchronous (new WebSocket(url)).
 ipcMain.on('sesh:ws-base', (e) => { e.returnValue = bridge ? bridge.base : '' })
 // Settings — read the token-free config view; write a new endpoint (token encrypted in main).
-ipcMain.handle('sesh:get-config', () => publicConfig(cfg))
+ipcMain.handle('sesh:get-config', () => publicConfig(cfg, isConfigured(app.getPath('userData'))))
 ipcMain.handle('sesh:set-config', async (_e, input) => {
   saveConfig(app.getPath('userData'), safeStorage, input)
   await buildTransport()

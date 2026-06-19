@@ -15,10 +15,21 @@
 
   let daemon = $state(null)
   let connErr = $state(null)
+  let autoPrompted = $state(false)
 
   async function pollStatus() {
-    try { daemon = await api.status(); connErr = null }
-    catch (e) { daemon = null; connErr = String(e) }
+    try {
+      daemon = await api.status(); connErr = null
+    } catch (e) {
+      daemon = null; connErr = String(e)
+      // First-run guidance: if we can't reach a daemon AND the user has never chosen an
+      // endpoint (we're only guessing the default local socket), open Settings once so they
+      // can point the app at their daemon. Only in a packaged transport (web/dev is fixed).
+      if (!autoPrompted && sesh.transport !== 'web') {
+        autoPrompted = true
+        try { const c = await sesh.getConfig(); if (c.editable && !c.configured) showSettings = true } catch {}
+      }
+    }
   }
   $effect(() => { pollStatus(); const t = setInterval(pollStatus, 4000); return () => clearInterval(t) })
 </script>
@@ -52,8 +63,18 @@
 
   {#if connErr && !daemon}
     <div class="connbanner">
-      Cannot reach the sesh daemon. <code>{connErr}</code>
-      <small>Start a dev daemon (PLAN.md → "Running a dev daemon") and check vite.config.js endpoint/token.</small>
+      <div class="cb-head">
+        <span>Cannot reach the sesh daemon.</span>
+        {#if sesh.transport !== 'web'}
+          <button class="cb-cfg" onclick={() => (showSettings = true)}>Configure connection…</button>
+        {/if}
+      </div>
+      <code>{connErr}</code>
+      {#if sesh.transport === 'web'}
+        <small>Start a dev daemon (PLAN.md → "Running a dev daemon") and check vite.config.js endpoint/token.</small>
+      {:else}
+        <small>Set the endpoint (local socket / remote host:port) and token in Connection settings.</small>
+      {/if}
     </div>
   {/if}
 
@@ -104,6 +125,10 @@
     font-size: 13px; display: flex; flex-direction: column; gap: 5px; z-index: 60; }
   .connbanner code { font-size: 11px; color: #ff9eb1; word-break: break-all; }
   .connbanner small { color: #d98a9a; }
+  .cb-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .cb-cfg { background: #ffb4c0; color: #3a1c28; border: 0; border-radius: 6px; padding: 4px 10px;
+    font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .cb-cfg:hover { background: #ffc9d2; }
 
   .toasts { position: fixed; top: 58px; right: 14px; display: flex; flex-direction: column; gap: 8px;
     z-index: 70; max-width: 420px; }

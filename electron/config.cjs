@@ -71,10 +71,17 @@ function saveConfig(userDataDir, safeStorage, input) {
   return { socketPath }
 }
 
-// The renderer-safe view of the current config — NO token value, only whether one is set.
-function publicConfig(cfg) {
-  if (cfg.host) return { mode: 'remote', target: `${cfg.host}:${cfg.port}`, hasToken: !!cfg.token, editable: true }
-  return { mode: 'local', target: cfg.socketPath, hasToken: false, editable: true }
+// Has the user EXPLICITLY chosen an endpoint (env or a persisted config), vs. us falling back
+// to the guessed default local socket? Drives the first-run "configure your connection" UX.
+function isConfigured(userDataDir) {
+  if (process.env.SESH_API_ADDR || process.env.SESH_SOCKET_PATH) return true
+  return !!readEndpoint(userDataDir)
 }
 
-module.exports = { resolveConfig, saveConfig, publicConfig, defaultSocketPath }
+// The renderer-safe view of the current config — NO token value, only whether one is set.
+function publicConfig(cfg, configured = true) {
+  if (cfg.host) return { mode: 'remote', target: `${cfg.host}:${cfg.port}`, hasToken: !!cfg.token, editable: true, configured }
+  return { mode: 'local', target: cfg.socketPath, hasToken: false, editable: true, configured }
+}
+
+module.exports = { resolveConfig, saveConfig, publicConfig, isConfigured, defaultSocketPath }
