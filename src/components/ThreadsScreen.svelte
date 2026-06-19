@@ -26,6 +26,19 @@
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
   let deleteTarget = $state(null)    // thread pending delete confirmation
 
+  // Collapsed parent ids (tree fold, like the TUI). Persisted in localStorage so the fold survives
+  // reloads; it's plain component state so the 2.5s grid poll never resets it.
+  let collapsed = $state(loadCollapsed())
+  function loadCollapsed() {
+    try { return new Set(JSON.parse(localStorage.getItem('seshui.collapsed') || '[]')) } catch { return new Set() }
+  }
+  function toggleCollapse(id) {
+    const n = new Set(collapsed)
+    n.has(id) ? n.delete(id) : n.add(id)
+    collapsed = n
+    try { localStorage.setItem('seshui.collapsed', JSON.stringify([...n])) } catch {}
+  }
+
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
     // never a per-tick toast. On failure keep the last-known rows rather than blanking.
@@ -55,8 +68,10 @@
     const byName = (a, b) => (a.name || '').localeCompare(b.name || '')
     const out = []
     const walk = (r, depth) => {
-      out.push({ row: r, depth })
-      ;(children.get(r.id) || []).sort(byName).forEach((c) => walk(c, depth + 1))
+      const kids = children.get(r.id) || []
+      out.push({ row: r, depth, hasChildren: kids.length > 0, collapsed: collapsed.has(r.id) })
+      // Fold: skip a collapsed parent's subtree entirely (its rows leave the flattened list).
+      if (kids.length && !collapsed.has(r.id)) kids.sort(byName).forEach((c) => walk(c, depth + 1))
     }
     roots.sort(byName).forEach((r) => walk(r, 0))
     return out
@@ -68,7 +83,7 @@
     // When filtering, drop the tree indent and show flat matches by name/agent/cwd.
     return tree
       .filter(({ row }) => `${row.name} ${row.agent_kind} ${row.cwd_rel || row.cwd}`.toLowerCase().includes(q))
-      .map(({ row }) => ({ row, depth: 0 }))
+      .map(({ row }) => ({ row, depth: 0, hasChildren: false, collapsed: false }))
   })
 
   function select(r) { selectedId = r.id; mode = 'auto' }
@@ -120,8 +135,14 @@
       <label class="arch" title="show threads from every machine in the mesh (like sesh tui)"><input type="checkbox" bind:checked={showAllMachines} /> all&nbsp;machines</label>
     </div>
     <div class="list">
-      {#each filtered as { row, depth } (row.id)}
+      {#each filtered as { row, depth, hasChildren, collapsed } (row.id)}
         <button class="row {selectedId === row.id ? 'sel' : ''}" style="padding-left:{14 + depth * 16}px" onclick={() => select(row)}>
+          {#if hasChildren}
+            <span class="fold" style="left:{depth * 16}px" role="button" tabindex="-1"
+              title={collapsed ? 'expand' : 'collapse'}
+              onclick={(e) => { e.stopPropagation(); toggleCollapse(row.id) }}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); toggleCollapse(row.id) } }}>{collapsed ? '▸' : '▾'}</span>
+          {/if}
           <span class="g {row.busy === 'busy' ? 'busy' : ''}">{glyph(row)}</span>
           <span class="nm">{row.name || '(nameless)'}{#if row.archived}<span class="archtag"> ·archived</span>{/if}</span>
           <span class="st">{stateLabel(row)}</span>
@@ -221,10 +242,13 @@
   .filter { flex: 1; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px;
     padding: 6px 9px; font-size: 12px; }
   .arch { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #9aa5ce; white-space: nowrap; }
-  .list { flex: 1; overflow-y: auto; }
-  .row { width: 100%; text-align: left; display: grid; grid-template-columns: 22px 1fr auto;
+  .list { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+  .row { position: relative; width: 100%; text-align: left; display: grid; grid-template-columns: 22px 1fr auto;
     gap: 2px 8px; align-items: center; background: none; border: 0; color: inherit; padding: 9px 14px;
     cursor: pointer; border-left: 2px solid transparent; }
+  .fold { position: absolute; top: 8px; width: 14px; text-align: center; color: #565f89; font-size: 10px;
+    cursor: pointer; user-select: none; }
+  .fold:hover { color: #c0caf5; }
   .row:hover { background: #15161f; }
   .row.sel { background: #181a26; border-left-color: #7aa2f7; }
   .row .g { font-size: 14px; color: #565f89; grid-row: 1 / span 2; }

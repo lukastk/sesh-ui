@@ -13,6 +13,7 @@
   let draft = $state('')
   let sending = $state(false)
   let loadErr = $state(null)
+  let atBottom = $state(true)
   let scroller
   let loadedFor = null
 
@@ -29,7 +30,16 @@
       else loadErr = String(e)
     }
   }
-  async function scrollDown() { await tick(); scroller?.scrollTo(0, scroller.scrollHeight) }
+  function onScroll() {
+    if (!scroller) return
+    atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48
+  }
+  async function scrollDown(force = false) {
+    if (!force && !atBottom) return   // user scrolled up — don't yank them down
+    await tick()
+    scroller?.scrollTo(0, scroller.scrollHeight)
+    atBottom = true
+  }
 
   async function send() {
     const text = draft.trim()
@@ -37,7 +47,7 @@
     sending = true
     msgs = [...msgs, { role: 'user', text }]
     draft = ''
-    await scrollDown()
+    await scrollDown(true)      // sending always snaps to the latest
     try {
       await api.sendHeadless(threadId, text)
       // Poll until the turn completes, then reload the durable transcript for the full turn.
@@ -61,15 +71,15 @@
   $effect(() => {
     if (threadId === loadedFor) return
     loadedFor = threadId
-    msgs = []
+    msgs = []; atBottom = true
     load()
   })
 </script>
 
 <div class="chat">
-  <div class="log" bind:this={scroller}>
+  <div class="log" bind:this={scroller} onscroll={onScroll}>
     {#if loadErr}<div class="bubble error">{loadErr}</div>{/if}
-    {#each msgs as m}
+    {#each msgs as m, i (i)}
       <div class="bubble {m.role}">
         {#if m.thinking}<div class="thinking">{m.thinking}</div>{/if}
         {#if m.text}<div class="text">{m.text}</div>{/if}
@@ -78,6 +88,9 @@
     {#if sending}<div class="bubble assistant pending">…thinking</div>{/if}
     {#if msgs.length === 0 && !loadErr && !sending}<div class="empty">No transcript yet — send a headless turn below.</div>{/if}
   </div>
+  {#if !atBottom}
+    <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
+  {/if}
   <div class="composer">
     <textarea bind:value={draft} placeholder="Send a headless turn… (⌘/Ctrl+Enter)" onkeydown={onkey}></textarea>
     <button onclick={send} disabled={sending}>{sending ? '…' : 'Send'}</button>
@@ -85,8 +98,12 @@
 </div>
 
 <style>
-  .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  .log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
+  .log { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px; }
+  .jump { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); z-index: 5;
+    background: #7aa2f7; color: #11121a; border: 0; border-radius: 16px; padding: 5px 13px;
+    font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
   .bubble { max-width: 80%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap;
     font-size: 13px; line-height: 1.45; word-break: break-word; }
   .bubble.user { align-self: flex-end; background: #3d59a1; color: #fff; }

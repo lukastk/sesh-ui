@@ -178,11 +178,11 @@
   .topbar button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 12px; }
   .topbar .primary { background: #7aa2f7; color: #11121a; border: 0; font-weight: 600; }
   .topbar .warn { color: #e0af68; font-size: 11px; }
-  .board { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px; overflow: auto; min-height: 0; }
+  .board { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px; overflow: auto; overscroll-behavior: contain; min-height: 0; }
   .col { background: #0e0f17; border: 1px solid #1f2030; border-radius: 10px; display: flex; flex-direction: column; min-height: 0; }
   .col-head { padding: 10px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; display: flex; justify-content: space-between; }
   .col-head span { color: #565f89; }
-  .cards { flex: 1; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 7px; }
+  .cards { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 7px; }
   .card { text-align: left; background: #16161e; border: 1px solid #232433; border-left: 3px solid; border-radius: 8px; padding: 9px 11px; cursor: pointer; color: inherit; }
   .card:hover { background: #1c1d2b; }
   .cname { font-size: 13px; font-weight: 500; }

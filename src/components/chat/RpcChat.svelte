@@ -18,18 +18,28 @@
   let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
   let draft = $state('')
   let state = $state('connecting…')
-  let streaming = $state(false)
+  let streaming = $state(false) // a UI turn is in flight (send → agent_end): freezes the history poll
+  let atBottom = $state(true)   // is the log scrolled to the bottom? (drives auto-follow + jump button)
   let ws = null
   let scroller
   let activeFor = null
   let streamIdx = null         // index into `live` of the assistant bubble being streamed
   let pollTimer = null
 
-  let bubbles = $derived([...history, ...live])
+  // Stable keys so the optimistic `live` bubbles are SWAPPED for the reloaded `history` ones (never
+  // shown alongside): history is append-only so its index is stable; live is a separate keyspace.
+  let bubbles = $derived([
+    ...history.map((m, i) => ({ ...m, key: 'h' + i })),
+    ...live.map((m, i) => ({ ...m, key: 'l' + i })),
+  ])
 
-  async function loadHistory() {
+  // force=true only on the agent_end reload: a background poll that resolves DURING a UI turn must
+  // NOT apply (it could pick up the just-sent user message into `history` while the optimistic copy
+  // still sits in `live` → a transient duplicate). Freezing history during the turn prevents that.
+  async function loadHistory(force = false) {
     try {
       const t = await api.transcript(threadId, 300)
+      if (!force && streaming) return
       history = parseTranscript(t.lines || [], 'pi')
       await scrollDown()
     } catch (e) {
@@ -50,7 +60,7 @@
       if (m.ok && m.state) { state = m.state.idle ? `idle · ${m.state.config?.model ?? 'pi'}` : 'busy'; return }
       if (m.error) { live = [...live, { role: 'tool', text: '⚠ ' + m.error }]; return }
       if (m.event === 'text_delta') {
-        if (streamIdx === null) { live = [...live, { role: 'assistant', text: '' }]; streamIdx = live.length - 1; streaming = true }
+        if (streamIdx === null) { live = [...live, { role: 'assistant', text: '' }]; streamIdx = live.length - 1 }
         live = live.map((x, i) => (i === streamIdx ? { ...x, text: x.text + m.delta } : x))
         await scrollDown()
       } else if (m.event === 'tool_execution_start') {
@@ -58,25 +68,37 @@
       } else if (m.event === 'tool_execution_end') {
         streamIdx = null; live = [...live, { role: 'tool', text: '■ ' + m.toolName }]
       } else if (m.event === 'agent_end') {
-        streamIdx = null; streaming = false; state = 'idle'
-        // The completed turn is now persisted — reload the transcript, THEN drop the overlay
-        // (load-then-clear, so there's no blank flash and no duplicated bubble).
-        await loadHistory()
-        live = []
+        streamIdx = null; state = 'idle'
+        // The completed turn is now persisted — reload the transcript (forced), THEN drop the overlay
+        // and unfreeze the poll, so the turn is shown exactly once (history) with no blank flash.
+        await loadHistory(true)
+        live = []; streaming = false
       }
     }
-    ws.onclose = () => { if (state !== 'error') state = 'closed' }
-    ws.onerror = () => (state = 'error — not a live pi rpc thread?')
+    // On close/error end any in-flight turn so the history poll resumes (never stay frozen).
+    ws.onclose = () => { streaming = false; if (state !== 'error') state = 'closed' }
+    ws.onerror = () => { streaming = false; state = 'error — not a live pi rpc thread?' }
   }
-  async function scrollDown() { await tick(); scroller?.scrollTo(0, scroller.scrollHeight) }
+  function onScroll() {
+    if (!scroller) return
+    atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48
+  }
+  async function scrollDown(force = false) {
+    if (!force && !atBottom) return   // user scrolled up — don't yank them back down
+    await tick()
+    scroller?.scrollTo(0, scroller.scrollHeight)
+    atBottom = true
+  }
 
   function send() {
     const text = draft.trim()
     if (!text || !ws || ws.readyState !== 1) return
+    streaming = true              // freeze the history poll for the whole turn (closes the dup window)
     live = [...live, { role: 'user', text }]
     draft = ''
     streamIdx = null
     ws.send(JSON.stringify({ message: text }))
+    scrollDown(true)              // sending always snaps to the latest
   }
   function onkey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
@@ -88,7 +110,7 @@
     const id = threadId
     if (id === activeFor) return
     activeFor = id
-    history = []; live = []; streamIdx = null; streaming = false; state = 'connecting…'
+    history = []; live = []; streamIdx = null; streaming = false; state = 'connecting…'; atBottom = true
     try { ws?.close() } catch {}
     clearInterval(pollTimer)
     loadHistory()                 // show persisted history immediately — never blank on switch
@@ -102,8 +124,8 @@
 
 <div class="chat">
   <div class="ribbon">⚡ pi RPC · transcript-backed · {state}</div>
-  <div class="log" bind:this={scroller}>
-    {#each bubbles as m, i (i)}
+  <div class="log" bind:this={scroller} onscroll={onScroll}>
+    {#each bubbles as m, i (m.key)}
       <div class="bubble {m.role}">
         {#if m.thinking}<div class="thinking">{m.thinking}</div>{/if}
         <div class="text">{m.text}{#if m.role === 'assistant' && streaming && i === bubbles.length - 1}<span class="cursor"></span>{/if}</div>
@@ -111,6 +133,9 @@
     {/each}
     {#if bubbles.length === 0}<div class="empty">No turns yet — send a message (streams live), or type in the pi TUI.</div>{/if}
   </div>
+  {#if !atBottom}
+    <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
+  {/if}
   <div class="composer">
     <textarea bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send, Shift+Enter for newline" onkeydown={onkey}></textarea>
     <button onclick={send}>Send</button>
@@ -118,10 +143,15 @@
 </div>
 
 <style>
-  .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
   .ribbon { padding: 5px 14px; font-size: 11px; color: #e0af68; background: #16161e;
     border-bottom: 1px solid #1f2030; font-family: ui-monospace, monospace; flex-shrink: 0; }
-  .log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+  /* own our overflow: a wheel at the top/bottom edge must NOT bubble out to the page/sidebar. */
+  .log { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 14px;
+    display: flex; flex-direction: column; gap: 9px; }
+  .jump { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); z-index: 5;
+    background: #7aa2f7; color: #11121a; border: 0; border-radius: 16px; padding: 5px 13px;
+    font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
   .bubble { max-width: 80%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap;
     font-size: 14px; line-height: 1.5; word-break: break-word; }
   .user { align-self: flex-end; background: #3d59a1; color: #fff; }
