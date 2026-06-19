@@ -146,7 +146,8 @@ export const api = {
   unsubscribe: (subscriber, subscribee) => sesh.post('/subscriptions/remove', { subscriber, subscribee }),
 
   // ── blobs ────────────────────────────────────────────────────────────────
-  blobAdd: (name, base64) => sesh.post('/blobs', { name, data: base64 }),
+  // `machine` (optional) targets the thread's OWNING machine's blob store for cross-machine chat.
+  blobAdd: (name, base64, machine) => sesh.post('/blobs', { name, data: base64 }, machine),
 
   // ── streaming endpoints (return WS URLs, not data) ───────────────────────
   // `machine` (optional) routes the WS through main's bridge to the thread's owning daemon.

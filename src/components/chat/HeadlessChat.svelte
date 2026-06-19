@@ -6,6 +6,7 @@
   import { tick } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
+  import { uploadBlob } from '../../lib/blobs.js'
 
   let { threadId, agentKind = 'pi', machine = undefined } = $props()  // machine: remote thread's owning daemon
 
@@ -16,6 +17,33 @@
   let atBottom = $state(true)
   let scroller
   let loadedFor = null
+  let attachments = $state([])    // {name, token} blobs referenced in the draft
+  let uploading = $state(false)
+  let fileInput
+
+  // Upload files to the thread's owning blob store and drop an @blob(hash) token into the draft.
+  async function attachFiles(files) {
+    const list = [...(files || [])]
+    if (!list.length) return
+    uploading = true
+    try {
+      for (const f of list) {
+        const b = await uploadBlob(f, machine)
+        attachments = [...attachments, { name: b.name, token: b.token }]
+        draft = (draft ? draft.replace(/\s*$/, '') + ' ' : '') + b.token + ' '
+      }
+    } catch (e) { msgs = [...msgs, { role: 'error', text: 'attach failed: ' + (e.message ?? e) }] }
+    finally { uploading = false }
+  }
+  function onPaste(e) {
+    const files = [...(e.clipboardData?.files || [])]
+    if (files.length) { e.preventDefault(); attachFiles(files) }
+  }
+  function onDrop(e) { e.preventDefault(); attachFiles(e.dataTransfer?.files) }
+  function removeAttachment(a) {
+    attachments = attachments.filter((x) => x !== a)
+    draft = draft.split(a.token).join('').replace(/[ \t]{2,}/g, ' ').replace(/^\s+/, '')
+  }
 
   async function load() {
     try {
@@ -47,6 +75,7 @@
     sending = true
     msgs = [...msgs, { role: 'user', text }]
     draft = ''
+    attachments = []            // the @blob tokens are now in the sent text
     await scrollDown(true)      // sending always snaps to the latest
     try {
       await api.sendHeadless(threadId, text, machine)
@@ -91,9 +120,20 @@
   {#if !atBottom}
     <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
   {/if}
-  <div class="composer">
-    <textarea bind:value={draft} placeholder="Send a headless turn… (⌘/Ctrl+Enter)" onkeydown={onkey}></textarea>
-    <button onclick={send} disabled={sending}>{sending ? '…' : 'Send'}</button>
+  <div class="composer-wrap" ondragover={(e) => e.preventDefault()} ondrop={onDrop} role="group">
+    {#if attachments.length}
+      <div class="chips">
+        {#each attachments as a (a.token)}
+          <span class="chip">📎 {a.name}<button onclick={() => removeAttachment(a)} aria-label="remove attachment">×</button></span>
+        {/each}
+      </div>
+    {/if}
+    <div class="composer">
+      <textarea bind:value={draft} placeholder="Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach" onkeydown={onkey} onpaste={onPaste}></textarea>
+      <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
+      <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image">{uploading ? '…' : '📎'}</button>
+      <button onclick={send} disabled={sending}>{sending ? '…' : 'Send'}</button>
+    </div>
   </div>
 </div>
 
@@ -113,8 +153,15 @@
   .empty { color: #565f89; font-size: 13px; margin: auto; }
   .thinking { opacity: 0.5; font-style: italic; font-size: 12px; margin-bottom: 6px;
     border-left: 2px solid #565f89; padding-left: 6px; }
-  .composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #1f2030;
-    background: #16161e; flex-shrink: 0; }
+  .composer-wrap { border-top: 1px solid #1f2030; background: #16161e; flex-shrink: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; background: #1a2733; color: #7dcfff;
+    border: 1px solid #1e3a4a; border-radius: 6px; padding: 3px 7px; font-size: 11px; }
+  .chip button { background: none; border: 0; color: #7dcfff; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+  .composer { display: flex; gap: 8px; padding: 10px; }
+  .attach { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 8px;
+    padding: 0 12px; cursor: pointer; font-size: 15px; min-width: 44px; }
+  .attach:disabled { opacity: 0.5; }
   textarea { flex: 1; resize: none; height: 46px; background: #1a1b26; color: #c0caf5;
     border: 1px solid #2a2b3d; border-radius: 8px; padding: 8px; font-family: inherit; font-size: 13px; }
   button { background: #7aa2f7; color: #16161e; border: 0; border-radius: 8px; padding: 0 16px;
