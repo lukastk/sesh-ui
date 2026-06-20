@@ -7,6 +7,7 @@
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll, conn } from '../lib/connection.svelte.js'
+  import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import RpcChat from './chat/RpcChat.svelte'
   import Terminal from './chat/Terminal.svelte'
   import HeadlessChat from './chat/HeadlessChat.svelte'
@@ -14,7 +15,9 @@
   import PromptDialog from './PromptDialog.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
-  let rows = $state([])
+  // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
+  // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
+  let rows = $state(cacheGet('grid')?.data || [])
   let selectedId = $state(null)
   let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
   let filter = $state('')
@@ -43,7 +46,7 @@
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
     // never a per-tick toast. On failure keep the last-known rows rather than blanking.
-    try { rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || [] }
+    try { rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || []; cacheSet('grid', rows) }
     catch {}
   }
   $effect(() => { showArchived; showAllMachines; refresh() })   // immediate refetch when a toggle flips

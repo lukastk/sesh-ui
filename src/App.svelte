@@ -5,6 +5,8 @@
   import { sesh, api } from './lib/seshClient.js'
   import { toasts, dismiss } from './lib/toasts.svelte.js'
   import { conn, noteOk, noteFail } from './lib/connection.svelte.js'
+  import { cacheGet } from './lib/snapshot.svelte.js'
+  import { ago } from './lib/format.js'
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
   import MachinesScreen from './components/MachinesScreen.svelte'
@@ -74,6 +76,12 @@
         {/if}
       </div>
       {#if conn.error}<code>{conn.error}</code>{/if}
+      {#if sesh.transport === 'android'}
+        {@const cached = cacheGet('grid')}
+        {#if cached}
+          <small class="stale">⚠ Showing last-known cached data ({ago(cached.at)}). Actions need connectivity and will fail until the hub is reachable.</small>
+        {/if}
+      {/if}
       {#if sesh.transport === 'web'}
         <small>Start a dev daemon (PLAN.md → "Running a dev daemon") and check vite.config.js endpoint/token.</small>
       {:else}
@@ -133,6 +141,7 @@
     font-size: 13px; display: flex; flex-direction: column; gap: 5px; z-index: 60; }
   .connbanner code { font-size: 11px; color: #ff9eb1; word-break: break-all; }
   .connbanner small { color: #d98a9a; }
+  .connbanner .stale { color: #ffd27a; font-weight: 600; }
   .cb-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cb-cfg { background: #ffb4c0; color: #3a1c28; border: 0; border-radius: 6px; padding: 4px 10px;
     font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }

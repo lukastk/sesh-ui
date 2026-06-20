@@ -5,10 +5,12 @@
   import { api } from '../lib/seshClient.js'
   import { ago, headGlyph } from '../lib/format.js'
   import { poll } from '../lib/connection.svelte.js'
+  import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
-  let machines = $state([])
+  // Seed from the offline cache (Android) so a cold offline start shows the last-known mesh.
+  let machines = $state(cacheGet('mesh')?.data || [])
   let peers = $state([])
   let peersSupported = $state(true)   // false if the daemon predates /v1/peers (schema <22)
   let adding = $state(false)
@@ -18,7 +20,7 @@
 
   async function refresh() {
     // Background poll → connection store (one banner), not per-tick toasts; keep last mesh.
-    try { machines = (await poll(api.mesh())).machines || [] } catch {}
+    try { machines = (await poll(api.mesh())).machines || []; cacheSet('mesh', machines) } catch {}
     try { peers = (await api.peers()).peers || []; peersSupported = true }
     catch (e) { if (/:\s*404/.test(String(e))) peersSupported = false }
   }

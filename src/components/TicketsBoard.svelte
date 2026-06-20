@@ -6,9 +6,11 @@
   import { shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll } from '../lib/connection.svelte.js'
+  import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
-  let entries = $state([])
+  // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
+  let entries = $state(cacheGet('tickets')?.data || [])
   let unreachable = $state([])
   let sel = $state(null)             // open ticket (full record)
   let creating = $state(false)
@@ -26,6 +28,7 @@
       const r = await poll(api.ticketsAll())
       entries = r.tickets || []
       unreachable = r.unreachable || []
+      cacheSet('tickets', entries)
       // Reflect EXTERNAL status/binding changes in an open ticket, but NEVER overwrite the fields
       // the user may be editing in the dialog (name/prompt) — a blanket {...sel, ...e.ticket} merge
       // on the 3s poll clobbered in-progress edits before they could be saved.
