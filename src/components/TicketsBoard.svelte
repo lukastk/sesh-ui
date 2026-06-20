@@ -10,6 +10,7 @@
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
+  import { longpress } from '../lib/longpress.js'
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
   let entries = $state(cacheGet('tickets')?.data || [])
@@ -168,7 +169,8 @@
         <div class="cards">
           {#each byStatus(s) as e (e.ticket.id)}
             <button class="card" onclick={() => open(e)} style="border-left-color:{TICKET_COLORS[s]}"
-              oncontextmenu={(ev) => { ev.preventDefault(); openCardMenu(ev.clientX, ev.clientY, e) }}>
+              oncontextmenu={(ev) => { ev.preventDefault(); openCardMenu(ev.clientX, ev.clientY, e) }}
+              use:longpress={{ onlongpress: (lp) => openCardMenu(lp.x, lp.y, e) }}>
               <div class="cname">{e.ticket.name || '(unnamed)'}</div>
               <div class="cmeta">
                 <span class="machine">{e.machine}</span>

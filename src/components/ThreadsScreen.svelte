@@ -16,6 +16,7 @@
   import PromptDialog from './PromptDialog.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
+  import { longpress } from '../lib/longpress.js'
 
   // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
   // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
@@ -241,6 +242,7 @@
           ondragleave={() => { if (dropOn === row.id) dropOn = null }}
           ondrop={(e) => { e.preventDefault(); onDropRow(row.id) }}
           oncontextmenu={(e) => { e.preventDefault(); openRowMenu(e.clientX, e.clientY, row) }}
+          use:longpress={{ onlongpress: (e) => openRowMenu(e.x, e.y, row) }}
           title={dragId ? 'drop to set as parent' : ''}>
           {#if hasChildren}
             <span class="fold" style="left:{depth * 16}px" role="button" tabindex="-1"
