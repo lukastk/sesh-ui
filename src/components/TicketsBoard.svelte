@@ -49,13 +49,13 @@
       bindFor = { ticket, status }
       return
     }
-    try { await api.ticketSetStatus(ticket.id, status, ticket.thread_id); await refresh() }
+    try { await api.ticketSetStatus(ticket.id, status, ticket.thread_id, undefined, selMachine); await refresh() }
     catch (e) { pushError(`set-status ${status}: ${e.message ?? e}`) }
   }
   async function bindTo(threadId) {
     const { ticket } = bindFor
     bindFor = null
-    try { await api.ticketSetStatus(ticket.id, 'active', threadId); await refresh() }
+    try { await api.ticketSetStatus(ticket.id, 'active', threadId, undefined, selMachine); await refresh() }
     catch (e) { pushError(`bind: ${e.message ?? e}`) }
   }
 
@@ -65,7 +65,8 @@
     catch (e) { pushError(e) }
   }
   async function open(entry) {
-    try { sel = (await api.ticketGet(entry.ticket.id)).ticket; selMachine = entry.machine } catch (e) { pushError(e) }
+    // Route to the ticket's owning daemon (a remote ticket 404s on the connected daemon otherwise).
+    try { sel = (await api.ticketGet(entry.ticket.id, entry.machine)).ticket; selMachine = entry.machine } catch (e) { pushError(e) }
   }
   // Deep-link: resolve a ticket by id across the mesh and open it.
   async function doFind() {
@@ -91,23 +92,23 @@
     catch (e) { pushError(`move: ${e.message ?? e}`) }
   }
   async function savePrompt() {
-    try { await api.ticketSet(sel.id, { prompt: sel.prompt }); pushInfo('Prompt saved'); await refresh() }
+    try { await api.ticketSet(sel.id, { prompt: sel.prompt }, selMachine); pushInfo('Prompt saved'); await refresh() }
     catch (e) { pushError(e) }
   }
   async function saveName() {
-    try { await api.ticketSet(sel.id, { name: sel.name }) } catch (e) { pushError(e) }
+    try { await api.ticketSet(sel.id, { name: sel.name }, selMachine) } catch (e) { pushError(e) }
   }
   async function sendPrompt() {
-    try { await api.ticketSendPrompt(sel.id); pushInfo('Prompt sent to bound thread') } catch (e) { pushError(e) }
+    try { await api.ticketSendPrompt(sel.id, selMachine); pushInfo('Prompt sent to bound thread') } catch (e) { pushError(e) }
   }
   async function unbind() {
-    try { await api.ticketUnbind(sel.id); await refresh(); sel = entries.find((e) => e.ticket.id === sel.id)?.ticket ?? sel }
+    try { await api.ticketUnbind(sel.id, selMachine); await refresh(); sel = entries.find((e) => e.ticket.id === sel.id)?.ticket ?? sel }
     catch (e) { pushError(e) }
   }
   let confirmDel = $state(false)
   async function del() {
     confirmDel = false
-    try { await api.ticketDelete(sel.id); sel = null; await refresh() } catch (e) { pushError(e) }
+    try { await api.ticketDelete(sel.id, selMachine); sel = null; await refresh() } catch (e) { pushError(e) }
   }
 </script>
 

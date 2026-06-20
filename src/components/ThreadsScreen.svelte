@@ -108,9 +108,9 @@
     const t = tagDraft.trim()
     if (!t || !selected) return
     tagDraft = ''
-    await act('tag', () => api.tag(selected.id, [t], undefined))
+    await act('tag', () => api.tag(selected.id, [t], undefined, selected.machine))
   }
-  async function removeTag(t) { await act('untag', () => api.tag(selected.id, undefined, [t])) }
+  async function removeTag(t) { await act('untag', () => api.tag(selected.id, undefined, [t], selected.machine)) }
 
   // Reparent via drag-drop: drag a row onto another (→ that becomes its parent) or onto the
   // "drop to root" zone (→ a root). Reparent errors (cycle/self/unknown) surface as a loud toast.
@@ -129,7 +129,8 @@
   let reparentPick = $state(false)
   async function reparentTo(id, parentId) {
     reparentPick = false
-    await act('reparent', () => api.reparent(id, parentId)) // '' parentId = make root
+    const m = rows.find((r) => r.id === id)?.machine // route to the (re-parented) thread's owner
+    await act('reparent', () => api.reparent(id, parentId, m)) // '' parentId = make root
   }
 
   async function act(label, fn) {
@@ -140,14 +141,14 @@
     const r = renameTarget
     renameTarget = null
     if (name == null || name === r.name) return
-    await act('rename', () => api.rename(r.id, name))
+    await act('rename', () => api.rename(r.id, name, r.machine))
   }
   async function doDelete() {
     const r = deleteTarget
     deleteTarget = null
     const force = r.head === 'headful'
     try {
-      await api.del(r.id, force)
+      await api.del(r.id, force, r.machine)
       if (selectedId === r.id) selectedId = null
       await refresh()
     } catch (e) { pushError(`delete: ${e.message ?? e}`) }
@@ -237,18 +238,19 @@
           </div>
           {/if}
           {#if selected.head === 'headful'}
-            <button onclick={() => act('stop', () => api.stop(selected.id))}>Stop</button>
+            <button onclick={() => act('stop', () => api.stop(selected.id, selected.machine))} title="end the live pane (keeps the thread, resumable)">Stop</button>
           {:else}
-            <button onclick={() => act('resume', () => api.resume(selected.id))}>Resume</button>
-            <button onclick={() => act('headful', () => api.headful(selected.id))}>Headful</button>
+            <!-- resume and headful are the SAME daemon op (revive an idle thread into a live pane);
+                 one button. (send-headless, in the chat composer, is a stateless turn with no pane.) -->
+            <button onclick={() => act('resume', () => api.resume(selected.id, selected.machine))} title="revive this thread into a live tmux pane (a.k.a. headful)">Open pane</button>
           {/if}
           <button onclick={() => (newParent = selected.id)} title="new child thread">+ Child</button>
           <button onclick={() => (reparentPick = true)} title="set this thread's parent (or drag a row onto another)">Set parent…</button>
           <button onclick={() => (forkTarget = selected)} title="branch this conversation into a new thread">Fork</button>
-          <button onclick={() => act('notify', () => api.notify(selected.id, !selected.notify))}
+          <button onclick={() => act('notify', () => api.notify(selected.id, !selected.notify, selected.machine))}
             title={selected.notify ? 'notifications on — click to mute' : 'notifications muted — click to enable'}>{selected.notify ? '🔔' : '🔕'}</button>
           <button onclick={() => (renameTarget = selected)}>Rename</button>
-          <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
+          <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived, selected.machine))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
           <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
         </div>
       </header>

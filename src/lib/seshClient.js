@@ -115,16 +115,18 @@ export const api = {
   // ── threads: grid & lifecycle ────────────────────────────────────────────
   grid: (opts = {}) => sesh.get('/threads/grid' + qs({ archived: flag(opts.archived), 'all-machines': flag(opts.allMachines) })),
   threadList: (opts = {}) => sesh.get('/threads' + qs({ archived: flag(opts.archived), 'all-machines': flag(opts.allMachines) })),
-  threadStatus: (id) => sesh.get('/threads/status' + qs({ id })),
-  threadNew: (req) => sesh.post('/threads', req),
-  resume: (id) => sesh.post('/threads/resume', { id }),
-  headful: (id) => sesh.post('/threads/headful', { id }),
-  stop: (id) => sesh.post('/threads/stop', { id }),
-  archive: (id, archived) => sesh.post('/threads/archive', { id, archived }),
-  rename: (id, name) => sesh.post('/threads/rename', { id, name }),
-  reparent: (id, parent) => sesh.post('/threads/reparent', { id, parent }),
-  del: (id, force) => sesh.post('/threads/delete', { id, force }),
-  notify: (id, on) => sesh.post('/threads/notify', { id, on }),
+  threadStatus: (id, machine) => sesh.get('/threads/status' + qs({ id }), machine),
+  threadNew: (req, machine) => sesh.post('/threads', req, machine),
+  // Lifecycle verbs take the thread's owning `machine` (optional) — without it a verb on a
+  // cross-machine thread 404s on the connected daemon (the daemon doesn't fan verbs out).
+  resume: (id, machine) => sesh.post('/threads/resume', { id }, machine),
+  headful: (id, machine) => sesh.post('/threads/headful', { id }, machine),
+  stop: (id, machine) => sesh.post('/threads/stop', { id }, machine),
+  archive: (id, archived, machine) => sesh.post('/threads/archive', { id, archived }, machine),
+  rename: (id, name, machine) => sesh.post('/threads/rename', { id, name }, machine),
+  reparent: (id, parent, machine) => sesh.post('/threads/reparent', { id, parent }, machine),
+  del: (id, force, machine) => sesh.post('/threads/delete', { id, force }, machine),
+  notify: (id, on, machine) => sesh.post('/threads/notify', { id, on }, machine),
 
   // ── threads: chat ────────────────────────────────────────────────────────
   // `machine` (optional) dials the thread's OWNING daemon for a cross-machine thread (Electron).
@@ -135,23 +137,25 @@ export const api = {
   capture: (id, lines = 0, machine) => sesh.get('/threads/capture' + qs({ id, lines }), machine),
 
   // ── filesystem picker (cwd) ──────────────────────────────────────────────
-  fsList: (path) => sesh.get('/fs/list' + qs({ path })),
+  // `machine` (optional) lists on the TARGET daemon (a ~-cwd resolves portably on the owner).
+  fsList: (path, machine) => sesh.get('/fs/list' + qs({ path }), machine),
 
   // ── tickets ──────────────────────────────────────────────────────────────
+  // Ticket ops take the ticket's owning `machine` (optional) — a remote ticket 404s without it.
   ticketsAll: () => sesh.get('/tickets/list-all'),
-  ticketGet: (id) => sesh.get('/tickets/get' + qs({ id })),
+  ticketGet: (id, machine) => sesh.get('/tickets/get' + qs({ id }), machine),
   ticketCreate: (name, prompt) => sesh.post('/tickets', { name, prompt }),
-  ticketSet: (id, fields) => sesh.post('/tickets/set', { id, ...fields }),
-  ticketSetStatus: (id, status, threadId, note) =>
-    sesh.post('/tickets/status', { id, status, thread_id: threadId || undefined, note: note || undefined }),
-  ticketDelete: (id) => sesh.post('/tickets/delete', { id }),
-  ticketSendPrompt: (id) => sesh.post('/tickets/send-prompt', { id }),
-  ticketUnbind: (id) => sesh.post('/tickets/unbind', { id }),
-  ticketFind: (id) => sesh.get('/tickets/find' + qs({ id })),                 // mesh-wide lookup by id
+  ticketSet: (id, fields, machine) => sesh.post('/tickets/set', { id, ...fields }, machine),
+  ticketSetStatus: (id, status, threadId, note, machine) =>
+    sesh.post('/tickets/status', { id, status, thread_id: threadId || undefined, note: note || undefined }, machine),
+  ticketDelete: (id, machine) => sesh.post('/tickets/delete', { id }, machine),
+  ticketSendPrompt: (id, machine) => sesh.post('/tickets/send-prompt', { id }, machine),
+  ticketUnbind: (id, machine) => sesh.post('/tickets/unbind', { id }, machine),
+  ticketFind: (id) => sesh.get('/tickets/find' + qs({ id })),                 // mesh-wide lookup by id (fan-out)
   ticketMove: (id, to, from) => sesh.post('/tickets/move', { id, to, from: from || undefined }),
 
   // ── threads: tags ─────────────────────────────────────────────────────────
-  tag: (id, add, remove) => sesh.post('/threads/tag', { id, add: add || undefined, remove: remove || undefined }),
+  tag: (id, add, remove, machine) => sesh.post('/threads/tag', { id, add: add || undefined, remove: remove || undefined }, machine),
 
   // ── automation: hooks ──────────────────────────────────────────────────────
   hooks: () => sesh.get('/hooks'),
