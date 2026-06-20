@@ -167,6 +167,9 @@ export const api = {
   // ── blobs ────────────────────────────────────────────────────────────────
   // `machine` (optional) targets the thread's OWNING machine's blob store for cross-machine chat.
   blobAdd: (name, base64, machine) => sesh.post('/blobs', { name, data: base64 }, machine),
+  // The blob's absolute path ON THE SERVING DAEMON — what headful chats insert (the live agent
+  // reads the file from this path; @blob() tokens only expand on send/send-headless, not headful).
+  blobPath: (hash, machine) => sesh.get('/blobs/path' + qs({ hash }), machine),
 
   // ── streaming endpoints (return WS URLs, not data) ───────────────────────
   // `machine` (optional) routes the WS through main's bridge to the thread's owning daemon.

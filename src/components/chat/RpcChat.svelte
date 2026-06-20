@@ -11,8 +11,38 @@
   import { onDestroy, tick } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
+  import { uploadBlobPath } from '../../lib/blobs.js'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
+
+  let attachments = $state([])    // {name, path} blobs whose on-disk path is in the draft
+  let uploading = $state(false)
+  let fileInput
+
+  // Headful attach: upload to the THREAD's blob store, resolve the on-disk path, and drop that path
+  // into the draft (pi reads the file from it — no @blob() expansion on a typed-into live agent).
+  async function attachFiles(files) {
+    const list = [...(files || [])]
+    if (!list.length) return
+    uploading = true
+    try {
+      for (const f of list) {
+        const b = await uploadBlobPath(f, machine)
+        attachments = [...attachments, { name: b.name, path: b.path }]
+        draft = (draft ? draft.replace(/\s*$/, '') + ' ' : '') + b.path + ' '
+      }
+    } catch (e) { live = [...live, { role: 'tool', text: '⚠ attach failed: ' + (e.message ?? e) }] }
+    finally { uploading = false }
+  }
+  function onPaste(e) {
+    const files = [...(e.clipboardData?.files || [])]
+    if (files.length) { e.preventDefault(); attachFiles(files) }
+  }
+  function onDrop(e) { e.preventDefault(); attachFiles(e.dataTransfer?.files) }
+  function removeAttachment(a) {
+    attachments = attachments.filter((x) => x !== a)
+    draft = draft.split(a.path).join('').replace(/[ \t]{2,}/g, ' ').replace(/^\s+/, '')
+  }
 
   let history = $state([])     // completed turns from the transcript (authoritative) {role,text,thinking}
   let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
@@ -96,6 +126,7 @@
     streaming = true              // freeze the history poll for the whole turn (closes the dup window)
     live = [...live, { role: 'user', text }]
     draft = ''
+    attachments = []              // the resolved paths are now in the sent text
     streamIdx = null
     ws.send(JSON.stringify({ message: text }))
     scrollDown(true)              // sending always snaps to the latest
@@ -136,9 +167,20 @@
   {#if !atBottom}
     <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
   {/if}
-  <div class="composer">
-    <textarea bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send, Shift+Enter for newline" onkeydown={onkey}></textarea>
-    <button onclick={send}>Send</button>
+  <div class="composer-wrap" ondragover={(e) => e.preventDefault()} ondrop={onDrop} role="group">
+    {#if attachments.length}
+      <div class="chips">
+        {#each attachments as a (a.path)}
+          <span class="chip">📎 {a.name}<button onclick={() => removeAttachment(a)} aria-label="remove attachment">×</button></span>
+        {/each}
+      </div>
+    {/if}
+    <div class="composer">
+      <textarea bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send · drop/paste a file to attach its path" onkeydown={onkey} onpaste={onPaste}></textarea>
+      <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
+      <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image (inserts its path)">{uploading ? '…' : '📎'}</button>
+      <button onclick={send}>Send</button>
+    </div>
   </div>
 </div>
 
@@ -163,10 +205,16 @@
   .empty { color: #565f89; font-size: 13px; margin: auto; }
   .cursor::after { content: '▋'; color: #7aa2f7; animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  .composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #1f2030;
-    background: #16161e; flex-shrink: 0; }
+  .composer-wrap { border-top: 1px solid #1f2030; background: #16161e; flex-shrink: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; background: #1a2733; color: #7dcfff;
+    border: 1px solid #1e3a4a; border-radius: 6px; padding: 3px 7px; font-size: 11px; }
+  .chip button { background: none; border: 0; color: #7dcfff; cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+  .composer { display: flex; gap: 8px; padding: 10px; }
   textarea { flex: 1; resize: none; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d;
     border-radius: 8px; padding: 9px; font-size: 14px; font-family: inherit; line-height: 1.4; max-height: 140px; }
+  .attach { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; min-width: 44px; font-size: 15px; }
+  .attach:disabled { opacity: 0.5; }
   button { background: #e0af68; color: #16161e; border: 0; border-radius: 8px; padding: 0 16px;
     font-weight: 600; cursor: pointer; }
 </style>
