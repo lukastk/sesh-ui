@@ -280,9 +280,10 @@
   /* Phone width: 5 columns don't fit — swipe horizontally through near-full-width columns instead
      of cramming them. Each column scrolls its own cards vertically. */
   @media (max-width: 720px) {
+    /* Horizontal scroll + snap are driven in JS (dragscrollx: inertia + snap-to-column) — CSS
+       scroll-snap is omitted on purpose, it fought the JS fling. */
     .board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 82vw;
-      overflow-x: auto; scroll-snap-type: x proximity; padding: 12px; }
-    .col { scroll-snap-align: start; }
+      overflow-x: auto; padding: 12px; }
     .topbar input { min-width: 0; flex: 1; }
   }
   .col { background: #0e0f17; border: 1px solid #1f2030; border-radius: 10px; display: flex; flex-direction: column; min-height: 0; }
