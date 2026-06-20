@@ -135,12 +135,16 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
       reach local panes, duplicate server-side detach-safety, and add a per-Electron-version native
       module, for a case where an unreachable daemon already breaks the rest of the app. Rationale in README.
 
-## Phase 3 — Android  · **APK builds with native transport; on-phone verify pending pairing**
+## Phase 3 — Android  · **done — running on android-main, MVP + streaming verified on-device**
 
 Built on **macbook** (the SDK-equipped machine; mymain had no JDK/SDK). See **`ANDROID.md`** for the
 full design. Toolchain installed (JDK 17 Temurin, Android SDK android-34 + build-tools 34, Gradle 8.2.1
 wrapper). The **hub daemon is mymain:7878** (rebuilt from origin/main `5fd5157` — serves `?token=` WS +
-`/v1/peers`, schema 22, verified live over Tailscale). Phone = android-main (Pixel 9, 100.67.70.114).
+`/v1/peers`, schema 22, verified live over Tailscale). Phone = android-main (Pixel 9, 100.67.70.114),
+paired over wifi. **Verified on-device:** real all-machines grid (25 threads) + tickets (47) + machines
+(3, peer add/remove), headless transcript (real agent output), pi RPC streaming bubbles AND live xterm
+terminal over the `?token=` WS loopback bridge, token in the Keystore (survives reinstall), responsive
+phone layout (no two-axis scroll), and the offline cold-start cache + loud staleness banner.
 
 - [x] **Seam ready**: `seshClient` detects a native `window.SeshNative` bridge (`transport: 'android'`)
       and routes get/post/wsURL/peerInfo/getConfig/setConfig through it, mirroring the Electron
@@ -157,11 +161,13 @@ wrapper). The **hub daemon is mymain:7878** (rebuilt from origin/main `5fd5157` 
       (token encrypted via an AndroidKeyStore AES-GCM key — never the WebView), `SeshNativePlugin`
       (get/post/getWsBase/peerInfo/getConfig/setConfig). Primary + fallback endpoint. `public/sesh-native-bridge.js`
       injects `window.SeshNative` before the bundle. **Compiles + APK builds.**
-- [ ] **Pair phone over wifi** (needs Lukas: Wireless Debugging + pairing code) → `adb install` →
-      drive + screenshot. MVP check: real all-machines grid + tickets + machines + headless chat.
-- [ ] **Streaming on-phone** (pi RPC bubbles + xterm terminal over the `?token=` WS) — verify on android-main.
-- [ ] **Mobile layout** (responsive at phone width) + offline last-snapshot cache with a loud staleness
-      banner (writes require connectivity, fail loudly).
+- [x] **Paired over wifi + installed on android-main** (Pixel 9). Endpoint + token set on-device
+      (Settings → Remote TCP, mymain hub); token persists in the AndroidKeyStore across reinstall.
+      MVP verified: real all-machines grid + tickets + machines (peer add/remove) + headless transcript.
+- [x] **Streaming on-phone**: pi RPC bubbles (marker round-trip) AND a live xterm terminal (live tmux
+      pane, real ANSI) over the `?token=` WS loopback bridge — both verified on android-main.
+- [x] **Mobile layout** (responsive, single-pane Threads with a back button, swipe kanban, no page
+      scroll) + **offline last-snapshot cache** with a loud staleness banner (writes fail loudly).
 
 ## Backlog / sesh-side asks (these are `sesh` changes, raise them — don't hack around in the client)
 
