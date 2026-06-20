@@ -151,12 +151,12 @@ so the native project can't be generated/built there — but everything that doe
   daemon isn't possible — the UI shows a notice. A hub-proxy variant in sesh (the connected daemon proxies
   the rpc/terminal upgrade + transcript fetch to the owning peer) would let the app chat with any thread
   over one connection. This is the right fix; do NOT hack per-daemon dialing into the client.
-- **`/v1/peers` CRUD** (peer add/list/remove). Confirmed during the overnight run: the daemon has NO
-  peer HTTP routes — `peers.json` is local-file-only (managed by the `sesh peer` CLI). So the Machines
-  screen can VIEW the mesh (via `/v1/mesh`) but can't add/remove a peer from the client without this
-  endpoint. Deliberately NOT hacked around (editing peers.json from Electron main would bypass the
-  daemon and violate the client/daemon split) and NOT worth a risky live-mesh daemon redeploy unattended.
-  This is the blocker for peer add/remove + for Android machine management.
+- **`/v1/peers` CRUD** — BUILT in sesh (commit `4eb37f3` on the sesh repo): additive GET list / POST add
+  / POST remove over the existing peers registry, SchemaVersion 21→22, with a conformance test. The
+  Machines screen now lists/adds/removes peers against it (verified live on the dev daemon). **Pending
+  Lukas: review the sesh change + redeploy the fleet** — NOT deployed to the live daemons by the overnight
+  run (only the isolated dev daemon runs the schema-22 binary). Until the fleet is on ≥22, the Machines
+  peer panel shows a "needs daemon ≥22" note against an older daemon.
 
 ---
 

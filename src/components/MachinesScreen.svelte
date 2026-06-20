@@ -5,20 +5,85 @@
   import { api } from '../lib/seshClient.js'
   import { ago, headGlyph } from '../lib/format.js'
   import { poll } from '../lib/connection.svelte.js'
+  import { pushError, pushInfo } from '../lib/toasts.svelte.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
 
   let machines = $state([])
+  let peers = $state([])
+  let peersSupported = $state(true)   // false if the daemon predates /v1/peers (schema <22)
+  let adding = $state(false)
+  let removeTarget = $state(null)
+  // New-peer form fields (machine + ssh required; api_addr+token make it http-reachable for chat).
+  let f = $state({ machine: '', ssh: '', home: '', api_addr: '', api_token: '' })
 
   async function refresh() {
     // Background poll → connection store (one banner), not per-tick toasts; keep last mesh.
     try { machines = (await poll(api.mesh())).machines || [] } catch {}
+    try { peers = (await api.peers()).peers || []; peersSupported = true }
+    catch (e) { if (/:\s*404/.test(String(e))) peersSupported = false }
   }
   $effect(() => { refresh(); const t = setInterval(refresh, 3000); return () => clearInterval(t) })
 
   const liveCount = (m) => (m.threads || []).filter((t) => t.head === 'headful').length
+
+  async function addPeer() {
+    if (!f.machine.trim() || !f.ssh.trim()) return
+    const peer = { machine: f.machine.trim(), ssh: f.ssh.trim() }
+    if (f.home.trim()) peer.home = f.home.trim()
+    if (f.api_addr.trim()) peer.api_addr = f.api_addr.trim()
+    if (f.api_token.trim()) peer.api_token = f.api_token.trim()
+    try {
+      await api.peerAdd(peer)
+      adding = false; f = { machine: '', ssh: '', home: '', api_addr: '', api_token: '' }
+      pushInfo('Peer added'); await refresh()
+    } catch (e) { pushError(`peer add: ${e.message ?? e}`) }
+  }
+  async function doRemove() {
+    const m = removeTarget; removeTarget = null
+    try { await api.peerRemove(m); await refresh() } catch (e) { pushError(`peer remove: ${e.message ?? e}`) }
+  }
 </script>
 
 <div class="machines">
-  <div class="topbar"><span class="h">Machines</span></div>
+  <div class="topbar">
+    <span class="h">Machines</span>
+    <div class="spacer"></div>
+    {#if peersSupported && !adding}<button class="primary" onclick={() => (adding = true)}>+ Add peer</button>{/if}
+  </div>
+
+  <div class="peers">
+    {#if !peersSupported}
+      <div class="note">Peer management needs a daemon on schema ≥22 (additive <code>/v1/peers</code>). This daemon predates it — peers are managed via <code>sesh peer add/remove</code> until it's redeployed.</div>
+    {:else}
+      {#if adding}
+        <div class="addpeer">
+          <input bind:value={f.machine} placeholder="machine (name)" />
+          <input bind:value={f.ssh} placeholder="ssh (user@host)" />
+          <input bind:value={f.home} placeholder="home (~/.sesh, optional)" />
+          <input bind:value={f.api_addr} placeholder="api_addr (host:port, optional)" />
+          <input bind:value={f.api_token} placeholder="api_token (optional)" />
+          <button class="primary" onclick={addPeer} disabled={!f.machine.trim() || !f.ssh.trim()}>Add</button>
+          <button onclick={() => (adding = false)}>Cancel</button>
+        </div>
+      {/if}
+      {#if peers.length}
+        <div class="peerlist">
+          {#each peers as p (p.machine)}
+            <div class="peer">
+              <span class="pm">{p.machine}</span>
+              <span class="pssh">{p.ssh}</span>
+              {#if p.api_addr}<span class="papi" title="reachable over its TCP API (chat-capable)">⌘ {p.api_addr}</span>{:else}<span class="pssh2">ssh-only</span>{/if}
+              <div class="spacer"></div>
+              <button class="danger" onclick={() => (removeTarget = p.machine)}>Remove</button>
+            </div>
+          {/each}
+        </div>
+      {:else if !adding}
+        <div class="note">No peers configured. Add one to chat with threads on another machine.</div>
+      {/if}
+    {/if}
+  </div>
+
   <div class="grid">
     {#each machines as m (m.machine)}
       <div class="card {m.reachable ? '' : 'offline'}">
@@ -43,12 +108,33 @@
     {/each}
     {#if machines.length === 0}<div class="empty">no machines in the mesh</div>{/if}
   </div>
+
+  {#if removeTarget}
+    <ConfirmDialog title="Remove peer?" danger confirmLabel="Remove"
+      message={`"${removeTarget}" will be removed from this machine's peer registry (the remote daemon is untouched).`}
+      onconfirm={doRemove} oncancel={() => (removeTarget = null)} />
+  {/if}
 </div>
 
 <style>
   .machines { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .topbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #1f2030; background: #0e0f17; }
   .topbar .h { font-size: 16px; font-weight: 600; }
+  .topbar .spacer { flex: 1; }
+  .topbar .primary { background: #7aa2f7; color: #11121a; border: 0; border-radius: 6px; padding: 5px 12px; font-weight: 600; font-size: 12px; cursor: pointer; }
+  .peers { padding: 12px 16px; border-bottom: 1px solid #1f2030; background: #0b0c12; display: flex; flex-direction: column; gap: 8px; }
+  .peers .note { font-size: 12px; color: #565f89; } .peers .note code { color: #9aa5ce; }
+  .addpeer { display: flex; flex-wrap: wrap; gap: 8px; }
+  .addpeer input { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px; padding: 6px 9px; font-size: 12px; flex: 1; min-width: 130px; }
+  .addpeer button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  .addpeer .primary { background: #7aa2f7; color: #11121a; border: 0; font-weight: 600; }
+  .peerlist { display: flex; flex-direction: column; gap: 5px; }
+  .peer { display: flex; align-items: center; gap: 10px; background: #16161e; border: 1px solid #232433; border-radius: 7px; padding: 7px 11px; font-size: 12px; }
+  .peer .pm { font-weight: 600; color: #c0caf5; }
+  .peer .pssh { color: #9aa5ce; } .peer .pssh2 { color: #565f89; font-size: 11px; }
+  .peer .papi { color: #7dcfff; font-size: 11px; }
+  .peer .spacer { flex: 1; }
+  .peer .danger { background: #1a1b26; color: #ffb4c0; border: 1px solid #5a2030; border-radius: 6px; padding: 4px 11px; cursor: pointer; font-size: 12px; }
   .grid { flex: 1; overflow: auto; padding: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; align-content: start; }
   .card { background: #0e0f17; border: 1px solid #1f2030; border-radius: 11px; padding: 14px; }
   .card.offline { opacity: 0.6; border-color: #3a1c28; }

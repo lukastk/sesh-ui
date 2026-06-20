@@ -107,6 +107,11 @@ export const api = {
   health: () => sesh.get('/health'),
   mesh: () => sesh.get('/mesh'),
 
+  // ── peers (mesh membership; /v1/peers CRUD, daemon schema ≥22) ─────────────
+  peers: () => sesh.get('/peers'),
+  peerAdd: (peer) => sesh.post('/peers', peer),
+  peerRemove: (machine) => sesh.post('/peers/remove', { machine }),
+
   // ── threads: grid & lifecycle ────────────────────────────────────────────
   grid: (opts = {}) => sesh.get('/threads/grid' + qs({ archived: flag(opts.archived), 'all-machines': flag(opts.allMachines) })),
   threadList: (opts = {}) => sesh.get('/threads' + qs({ archived: flag(opts.archived), 'all-machines': flag(opts.allMachines) })),
