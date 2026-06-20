@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The sesh daemon's TCP API is plain HTTP, reached over Tailscale (a private, authenticated
+  WireGuard network). Android blocks cleartext HTTP by default (API 28+), which would deny the
+  native SeshNative transport's OkHttp requests to the hub. We permit cleartext here.
+
+  This is app-wide because the hub endpoint is user-configurable (any Tailscale host), not a fixed
+  domain we could allowlist. It is acceptable: the only cleartext traffic the app makes is to the
+  user's own daemon on their own tailnet, the request still carries the bearer token, and a token
+  in a query string (the WS ?token= path) only ever travels inside that tailnet. The WebView itself
+  loads the app over https://localhost (Capacitor's internal scheme), so this affects only the
+  native daemon calls.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
