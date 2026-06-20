@@ -12,6 +12,7 @@
   import ContextMenu from './ContextMenu.svelte'
   import { longpress } from '../lib/longpress.js'
   import { dragscrollx } from '../lib/dragscrollx.js'
+  import { registerBack } from '../lib/back.js'
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
   let entries = $state(cacheGet('tickets')?.data || [])
@@ -146,6 +147,18 @@
     confirmDel = false
     try { await api.ticketDelete(sel.id, selMachine); sel = null; await refresh() } catch (e) { pushError(e) }
   }
+
+  // Android "back": peel off any open overlay (topmost-first) before leaving the board.
+  $effect(() => registerBack(() => {
+    if (ctxMenu) { ctxMenu = null; return true }
+    if (confirmDel) { confirmDel = false; return true }
+    if (cardDel) { cardDel = null; return true }
+    if (moveFor) { moveFor = null; return true }
+    if (bindFor) { bindFor = null; return true }
+    if (sel) { sel = null; return true }
+    if (creating) { creating = false; return true }
+    return false
+  }))
 </script>
 
 <div class="board-wrap">

@@ -7,6 +7,7 @@
   import { poll } from '../lib/connection.svelte.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
+  import { registerBack } from '../lib/back.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known mesh.
@@ -17,6 +18,13 @@
   let removeTarget = $state(null)
   // New-peer form fields (machine + ssh required; api_addr+token make it http-reachable for chat).
   let f = $state({ machine: '', ssh: '', home: '', api_addr: '', api_token: '' })
+
+  // Android "back": close the remove-confirm dialog or the add-peer form before leaving the screen.
+  $effect(() => registerBack(() => {
+    if (removeTarget) { removeTarget = null; return true }
+    if (adding) { adding = false; return true }
+    return false
+  }))
 
   async function refresh() {
     // Background poll → connection store (one banner), not per-tick toasts; keep last mesh.

@@ -8,6 +8,8 @@
   import { cacheGet } from './lib/snapshot.svelte.js'
   import { fontScale, bumpScale, resetScale, setScale } from './lib/fontscale.svelte.js'
   import { pinch } from './lib/pinch.js'
+  import { registerBack, runBack } from './lib/back.js'
+  import { App as CapApp } from '@capacitor/app'
   import { ago } from './lib/format.js'
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
@@ -53,6 +55,18 @@
   let pinchBaseScale = 1
   function onPinchStart() { pinchBaseScale = fontScale.scale }
   function onPinchMove(scale) { setScale(pinchBaseScale * scale) }
+
+  // Android system BACK (the right/left-edge swipe gesture AND the back button both fire this):
+  // run the in-app back stack (close an overlay / leave a thread detail for the list); only exit the
+  // app when there's nothing left to go back to — the standard Android "back at root" behavior.
+  $effect(() => {
+    if (sesh.transport !== 'android') return
+    let handle
+    CapApp.addListener('backButton', () => { if (!runBack()) CapApp.exitApp() }).then((h) => (handle = h))
+    return () => handle?.remove()
+  })
+  // Settings is an app-level overlay; register a back handler while it's open so back closes it first.
+  $effect(() => { if (showSettings) return registerBack(() => { showSettings = false; return true }) })
 </script>
 
 <svelte:window onkeydown={onKey} />

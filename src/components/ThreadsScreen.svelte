@@ -17,6 +17,7 @@
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import { longpress } from '../lib/longpress.js'
+  import { registerBack } from '../lib/back.js'
 
   // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
   // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
@@ -182,6 +183,20 @@
   // Click-based reparent (the drag-free, testable path): a "Set parent…" picker. The daemon
   // rejects self/cycle/unknown loudly → a toast.
   let reparentPick = $state(false)
+
+  // Android "back" (edge-swipe / back button): peel off any open overlay topmost-first, then leave a
+  // selected thread's detail for the list (the ticket's example). Returns true once it consumes the
+  // back; false (nothing open, no selection) lets App fall through to exit.
+  $effect(() => registerBack(() => {
+    if (ctxMenu) { ctxMenu = null; return true }
+    if (reparentPick) { reparentPick = false; return true }
+    if (deleteTarget) { deleteTarget = null; return true }
+    if (renameTarget) { renameTarget = null; return true }
+    if (forkTarget) { forkTarget = null; return true }
+    if (newParent !== undefined) { newParent = undefined; return true }
+    if (selectedId) { selectedId = null; return true }
+    return false
+  }))
   async function reparentTo(id, parentId) {
     reparentPick = false
     const m = rows.find((r) => r.id === id)?.machine // route to the (re-parented) thread's owner
