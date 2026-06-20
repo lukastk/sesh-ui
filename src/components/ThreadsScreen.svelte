@@ -99,6 +99,36 @@
 
   function select(r) { selectedId = r.id; mode = 'auto' }
 
+  // Tags (chip strip on the detail header) — add/remove via POST /v1/threads/tag.
+  let tagDraft = $state('')
+  async function addTag() {
+    const t = tagDraft.trim()
+    if (!t || !selected) return
+    tagDraft = ''
+    await act('tag', () => api.tag(selected.id, [t], undefined))
+  }
+  async function removeTag(t) { await act('untag', () => api.tag(selected.id, undefined, [t])) }
+
+  // Reparent via drag-drop: drag a row onto another (→ that becomes its parent) or onto the
+  // "drop to root" zone (→ a root). Reparent errors (cycle/self/unknown) surface as a loud toast.
+  let dragId = $state(null)
+  let dropOn = $state(null)         // row id currently hovered as a drop target ('' = root zone)
+  function onDragStart(e, id) { dragId = id; e.dataTransfer.effectAllowed = 'move' }
+  function onDragEnd() { dragId = null; dropOn = null }
+  async function onDropRow(targetId) {
+    const id = dragId
+    dropOn = null; dragId = null
+    if (!id || id === targetId) return
+    await reparentTo(id, targetId)
+  }
+  // Click-based reparent (the drag-free, testable path): a "Set parent…" picker. The daemon
+  // rejects self/cycle/unknown loudly → a toast.
+  let reparentPick = $state(false)
+  async function reparentTo(id, parentId) {
+    reparentPick = false
+    await act('reparent', () => api.reparent(id, parentId)) // '' parentId = make root
+  }
+
   async function act(label, fn) {
     try { await fn(); await refresh() }
     catch (e) { pushError(`${label}: ${e.message ?? e}`) }
@@ -145,9 +175,20 @@
       <label class="arch"><input type="checkbox" bind:checked={showArchived} /> archived</label>
       <label class="arch" title="show threads from every machine in the mesh (like sesh tui)"><input type="checkbox" bind:checked={showAllMachines} /> all&nbsp;machines</label>
     </div>
+    {#if dragId}
+      <div class="root-drop" class:over={dropOn === ''}
+        ondragover={(e) => { e.preventDefault(); dropOn = '' }} ondragleave={() => (dropOn = null)}
+        ondrop={(e) => { e.preventDefault(); onDropRow('') }} role="presentation">↥ drop here to make a root thread</div>
+    {/if}
     <div class="list">
       {#each filtered as { row, depth, hasChildren, collapsed } (row.id)}
-        <button class="row {selectedId === row.id ? 'sel' : ''}" style="padding-left:{14 + depth * 16}px" onclick={() => select(row)}>
+        <button class="row {selectedId === row.id ? 'sel' : ''}" class:dragging={dragId === row.id} class:dropover={dropOn === row.id}
+          style="padding-left:{14 + depth * 16}px" onclick={() => select(row)}
+          draggable="true" ondragstart={(e) => onDragStart(e, row.id)} ondragend={onDragEnd}
+          ondragover={(e) => { if (dragId && dragId !== row.id) { e.preventDefault(); dropOn = row.id } }}
+          ondragleave={() => { if (dropOn === row.id) dropOn = null }}
+          ondrop={(e) => { e.preventDefault(); onDropRow(row.id) }}
+          title={dragId ? 'drop to set as parent' : ''}>
           {#if hasChildren}
             <span class="fold" style="left:{depth * 16}px" role="button" tabindex="-1"
               title={collapsed ? 'expand' : 'collapse'}
@@ -198,6 +239,7 @@
             <button onclick={() => act('headful', () => api.headful(selected.id))}>Headful</button>
           {/if}
           <button onclick={() => (newParent = selected.id)} title="new child thread">+ Child</button>
+          <button onclick={() => (reparentPick = true)} title="set this thread's parent (or drag a row onto another)">Set parent…</button>
           <button onclick={() => (forkTarget = selected)} title="branch this conversation into a new thread">Fork</button>
           <button onclick={() => act('notify', () => api.notify(selected.id, !selected.notify))}
             title={selected.notify ? 'notifications on — click to mute' : 'notifications muted — click to enable'}>{selected.notify ? '🔔' : '🔕'}</button>
@@ -206,6 +248,14 @@
           <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
         </div>
       </header>
+      <div class="tagbar">
+        <span class="tg-label">tags</span>
+        {#each selected.tags || [] as t (t)}
+          <span class="tg-chip">{t}<button onclick={() => removeTag(t)} aria-label="remove tag {t}">×</button></span>
+        {/each}
+        <input class="tg-input" bind:value={tagDraft} placeholder="+ add tag"
+          onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} />
+      </div>
       <section class="surface">
         {#if blockedRemote}
           <div class="remote-notice">
@@ -239,6 +289,25 @@
       onclose={() => (forkTarget = null)} oncreated={(id) => { forkTarget = null; onCreated(id) }} />
   {/if}
 
+  {#if reparentPick && selected}
+    <div class="backdrop" onclick={() => (reparentPick = false)} role="presentation">
+      <div class="rp" onclick={(e) => e.stopPropagation()} role="dialog">
+        <h3>Set parent of “{selected.name || shortId(selected.id)}”</h3>
+        <div class="rplist">
+          <button class="rprow root" onclick={() => reparentTo(selected.id, '')}>↥ (make a root thread)</button>
+          {#each rows.filter((r) => r.id !== selected.id) as r (r.id)}
+            <button class="rprow" onclick={() => reparentTo(selected.id, r.id)}>
+              <span class="g">{glyph(r)}</span>
+              <span class="nm">{r.name || shortId(r.id)}</span>
+              <span class="ag">{r.agent_kind}</span>
+            </button>
+          {/each}
+        </div>
+        <div class="rpfoot"><button onclick={() => (reparentPick = false)}>Cancel</button></div>
+      </div>
+    </div>
+  {/if}
+
   {#if renameTarget}
     <PromptDialog title="Rename thread" label="Name" value={renameTarget.name || ''}
       placeholder="(nameless)" confirmLabel="Rename"
@@ -269,6 +338,11 @@
   .fold { position: absolute; top: 8px; width: 14px; text-align: center; color: #565f89; font-size: 10px;
     cursor: pointer; user-select: none; }
   .fold:hover { color: #c0caf5; }
+  .row.dragging { opacity: 0.45; }
+  .row.dropover { background: #1c2a3a; border-left-color: #7dcfff; box-shadow: inset 0 0 0 1px #1e3a4a; }
+  .root-drop { margin: 6px 10px; padding: 8px; text-align: center; font-size: 11px; color: #7dcfff;
+    border: 1px dashed #1e3a4a; border-radius: 7px; background: #11202b; }
+  .root-drop.over { background: #1c2a3a; border-color: #7dcfff; }
   .row:hover { background: #15161f; }
   .row.sel { background: #181a26; border-left-color: #7aa2f7; }
   .row .g { font-size: 14px; color: #565f89; grid-row: 1 / span 2; }
@@ -298,6 +372,14 @@
     padding: 5px 12px; cursor: pointer; font-size: 12px; }
   .actions > button:hover { background: #232433; }
   .actions .danger { color: #ffb4c0; border-color: #5a2030; }
+  .tagbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 16px;
+    border-bottom: 1px solid #1f2030; background: #0c0d14; }
+  .tagbar .tg-label { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em; }
+  .tg-chip { display: inline-flex; align-items: center; gap: 4px; background: #1a2733; color: #7dcfff;
+    border: 1px solid #1e3a4a; border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 11px; }
+  .tg-chip button { background: none; border: 0; color: #7dcfff; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; }
+  .tg-input { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 12px;
+    padding: 3px 10px; font-size: 11px; width: 110px; }
   .surface { flex: 1; min-height: 0; }
   .remote-notice { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px; text-align: center; padding: 24px; max-width: 560px; margin: 0 auto; }
@@ -306,4 +388,18 @@
   .remote-notice .rn-title b, .remote-notice .rn-body b { color: #7dcfff; }
   .remote-notice .rn-body { font-size: 13px; color: #9aa5ce; line-height: 1.55; }
   .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 14px; }
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center;
+    justify-content: center; z-index: 50; }
+  .rp { background: #16161e; border: 1px solid #2a2b3d; border-radius: 12px; padding: 16px 18px; width: 460px;
+    max-width: 92vw; display: flex; flex-direction: column; gap: 10px; }
+  .rp h3 { margin: 0; font-size: 15px; }
+  .rplist { max-height: 340px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column;
+    gap: 3px; border: 1px solid #1f2030; border-radius: 8px; padding: 6px; }
+  .rprow { display: flex; align-items: center; gap: 8px; text-align: left; background: none; border: 0;
+    color: #c0caf5; padding: 7px 9px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .rprow:hover { background: #1c1d2b; }
+  .rprow.root { color: #7dcfff; }
+  .rprow .g { color: #565f89; font-size: 12px; } .rprow .nm { flex: 1; } .rprow .ag { font-size: 10px; color: #565f89; }
+  .rpfoot { display: flex; justify-content: flex-end; }
+  .rpfoot button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
 </style>
