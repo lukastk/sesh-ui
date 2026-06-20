@@ -6,6 +6,7 @@
   import { toasts, dismiss } from './lib/toasts.svelte.js'
   import { conn, noteOk, noteFail } from './lib/connection.svelte.js'
   import { cacheGet } from './lib/snapshot.svelte.js'
+  import { fontScale, bumpScale, resetScale } from './lib/fontscale.svelte.js'
   import { ago } from './lib/format.js'
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
@@ -35,7 +36,19 @@
     }
   }
   $effect(() => { pollStatus(); const t = setInterval(pollStatus, 4000); return () => clearInterval(t) })
+
+  // Apply the app-wide UI scale (reactive): a CSS var consumed by `.app { zoom: var(--font-scale) }`.
+  $effect(() => { document.documentElement.style.setProperty('--font-scale', String(fontScale.scale)) })
+  // Desktop shortcuts: Cmd/Ctrl +/- to scale, Cmd/Ctrl 0 to reset. (Android pinch drives the same store.)
+  function onKey(e) {
+    if (!(e.metaKey || e.ctrlKey)) return
+    if (e.key === '=' || e.key === '+') { e.preventDefault(); bumpScale(0.1) }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); bumpScale(-0.1) }
+    else if (e.key === '0') { e.preventDefault(); resetScale() }
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <div class="app">
   <nav>
@@ -54,6 +67,11 @@
         <span class="dot bad"></span>
         <span class="txt err">daemon unreachable</span>
       {/if}
+    </div>
+    <div class="fontctl" title="UI size (Cmd/Ctrl +/−, Cmd/Ctrl 0 to reset)">
+      <button onclick={() => bumpScale(-0.1)} aria-label="smaller UI">A−</button>
+      <button class="reset" onclick={resetScale} title="reset to 100%">{Math.round(fontScale.scale * 100)}%</button>
+      <button onclick={() => bumpScale(0.1)} aria-label="larger UI">A+</button>
     </div>
     <button class="gear" onclick={() => (showSettings = true)} title="Connection settings" aria-label="settings">⚙</button>
   </nav>
@@ -115,7 +133,10 @@
   :global(html, body) { height: 100%; overflow: hidden; overscroll-behavior: none; }
   :global(*) { box-sizing: border-box; }
 
-  .app { display: flex; flex-direction: column; height: 100dvh; max-width: 100vw; overflow: hidden; }
+  /* App-wide UI scale via `zoom`; the size is divided by the scale so after zoom it still fills the
+     viewport exactly (no overflow/scrollbars). --font-scale is set on :root from the fontScale store. */
+  .app { display: flex; flex-direction: column; zoom: var(--font-scale, 1);
+    height: calc(100dvh / var(--font-scale, 1)); width: calc(100vw / var(--font-scale, 1)); overflow: hidden; }
   nav { display: flex; align-items: center; gap: 18px; padding: 0 16px; height: 48px;
     background: #0b0c12; border-bottom: 1px solid #1f2030; flex-shrink: 0; }
   .brand { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
@@ -131,6 +152,10 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; }
   .dot.ok { background: #9ece6a; box-shadow: 0 0 6px #9ece6a88; }
   .dot.bad { background: #f7768e; }
+  .fontctl { display: flex; align-items: center; gap: 1px; }
+  .fontctl button { background: none; border: 0; color: #565f89; cursor: pointer; font-size: 12px; padding: 3px 6px; border-radius: 5px; }
+  .fontctl button:hover { background: #16161e; color: #9aa5ce; }
+  .fontctl .reset { font-size: 10px; min-width: 34px; }
   .gear { background: none; border: 0; color: #565f89; cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 6px; }
   .gear:hover { background: #16161e; color: #9aa5ce; }
 

@@ -8,12 +8,16 @@
   import { onMount, onDestroy } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
+  import { fontScale, bumpTerm } from '../../lib/fontscale.svelte.js'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
   let el
   let term, fit, ws, ro
   let fileInput
   let uploading = $state(false)
+  // The whole app is `zoom: scale`; counter it here so the terminal renders at net zoom 1 (crisp),
+  // controlled ONLY by its own xterm fontSize (fontScale.term) — the ticket's "separate" terminal size.
+  let counterZoom = $derived(1 / fontScale.scale)
 
   // Headful attach: upload to the THREAD's blob store, resolve the on-disk path, and TYPE it into
   // the live pty over the terminal WS (like keystrokes) — trailing space, no Enter. The agent reads
@@ -39,7 +43,7 @@
 
   function connect() {
     term = new Terminal({
-      cursorBlink: true, fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      cursorBlink: true, fontSize: fontScale.term, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       theme: { background: '#16161e', foreground: '#c0caf5', cursor: '#7aa2f7' },
     })
     fit = new FitAddon()
@@ -69,21 +73,38 @@
     try { ws?.close() } catch {}
     try { term?.dispose() } catch {}
   })
+
+  // React to the terminal font size OR the app scale changing: update xterm, refit, tell the pane.
+  $effect(() => {
+    const size = fontScale.term, sc = fontScale.scale // track both
+    void sc
+    if (!term) return
+    term.options.fontSize = size
+    Promise.resolve().then(() => {
+      try { fit.fit() } catch {}
+      if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+    })
+  })
 </script>
 
-<div class="termwrap">
+<div class="termwrap" style="zoom:{counterZoom}">
   <div class="term" bind:this={el}></div>
   <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
-  <button class="attach" onclick={() => fileInput.click()} disabled={uploading}
-    title="attach file / image (types its path into the terminal)">{uploading ? '…' : '📎'}</button>
+  <div class="tctl">
+    <button onclick={() => bumpTerm(-1)} title="smaller terminal font" aria-label="smaller terminal font">A−</button>
+    <button onclick={() => bumpTerm(1)} title="larger terminal font" aria-label="larger terminal font">A+</button>
+    <button class="attach" onclick={() => fileInput.click()} disabled={uploading}
+      title="attach file / image (types its path into the terminal)">{uploading ? '…' : '📎'}</button>
+  </div>
 </div>
 
 <style>
   .termwrap { position: relative; height: 100%; width: 100%; }
   .term { height: 100%; width: 100%; background: #16161e; padding: 6px; box-sizing: border-box; overflow: hidden; }
-  .attach { position: absolute; top: 8px; right: 14px; z-index: 5; background: #1a1b26; color: #c0caf5;
-    border: 1px solid #2a2b3d; border-radius: 7px; padding: 3px 9px; font-size: 14px; cursor: pointer;
-    opacity: 0.75; }
-  .attach:hover { opacity: 1; }
-  .attach:disabled { opacity: 0.5; }
+  .tctl { position: absolute; top: 8px; right: 14px; z-index: 5; display: flex; align-items: center; gap: 4px; }
+  .tctl button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
+    padding: 3px 8px; font-size: 12px; cursor: pointer; opacity: 0.7; }
+  .tctl button:hover { opacity: 1; }
+  .tctl button:disabled { opacity: 0.45; }
+  .tctl .attach { font-size: 14px; }
 </style>
