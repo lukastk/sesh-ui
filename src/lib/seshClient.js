@@ -147,6 +147,8 @@ export const api = {
   ticketDelete: (id) => sesh.post('/tickets/delete', { id }),
   ticketSendPrompt: (id) => sesh.post('/tickets/send-prompt', { id }),
   ticketUnbind: (id) => sesh.post('/tickets/unbind', { id }),
+  ticketFind: (id) => sesh.get('/tickets/find' + qs({ id })),                 // mesh-wide lookup by id
+  ticketMove: (id, to, from) => sesh.post('/tickets/move', { id, to, from: from || undefined }),
 
   // ── threads: tags ─────────────────────────────────────────────────────────
   tag: (id, add, remove) => sesh.post('/threads/tag', { id, add: add || undefined, remove: remove || undefined }),

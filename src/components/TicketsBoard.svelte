@@ -15,6 +15,10 @@
   let newName = $state('')
   let bindFor = $state(null)         // {ticket, status} awaiting a thread binding
   let threadChoices = $state([])
+  let selMachine = $state(null)      // the open ticket's owning machine (for move)
+  let findId = $state('')            // deep-link: find a ticket by id across the mesh
+  let moveFor = $state(null)         // {id, from} awaiting a target machine
+  let machineChoices = $state([])
 
   async function refresh() {
     // Background poll → connection store (one banner), not per-tick toasts; keep last entries.
@@ -58,7 +62,30 @@
     catch (e) { pushError(e) }
   }
   async function open(entry) {
-    try { sel = (await api.ticketGet(entry.ticket.id)).ticket } catch (e) { pushError(e) }
+    try { sel = (await api.ticketGet(entry.ticket.id)).ticket; selMachine = entry.machine } catch (e) { pushError(e) }
+  }
+  // Deep-link: resolve a ticket by id across the mesh and open it.
+  async function doFind() {
+    const id = findId.trim()
+    if (!id) return
+    try {
+      const r = await api.ticketFind(id)
+      if (!r.found) { pushError(`no ticket ${id}${r.unreachable?.length ? ` (unreachable: ${r.unreachable.join(', ')})` : ''}`); return }
+      sel = r.ticket; selMachine = r.machine; findId = ''
+      pushInfo(`found on ${r.machine}`)
+    } catch (e) { pushError(`find: ${e.message ?? e}`) }
+  }
+  // Move a ticket to another machine (daemon-coordinated; carries blobs).
+  async function openMove() {
+    try { machineChoices = ((await api.mesh()).machines || []).map((m) => m.machine).filter((m) => m !== selMachine) }
+    catch (e) { pushError(e); return }
+    moveFor = { id: sel.id, from: selMachine }
+  }
+  async function moveTo(to) {
+    const { id, from } = moveFor
+    moveFor = null
+    try { await api.ticketMove(id, to, from); pushInfo(`moved to ${to}`); sel = null; await refresh() }
+    catch (e) { pushError(`move: ${e.message ?? e}`) }
   }
   async function savePrompt() {
     try { await api.ticketSet(sel.id, { prompt: sel.prompt }); pushInfo('Prompt saved'); await refresh() }
@@ -91,6 +118,7 @@
     {:else}
       <button class="primary" onclick={() => (creating = true)}>+ New ticket</button>
     {/if}
+    <input class="find" bind:value={findId} placeholder="find by id…" onkeydown={(e) => e.key === 'Enter' && doFind()} />
     <div class="spacer"></div>
     {#if unreachable.length}<span class="warn">⚠ unreachable: {unreachable.join(', ')}</span>{/if}
   </div>
@@ -130,11 +158,13 @@
         <textarea bind:value={sel.prompt} onblur={savePrompt} placeholder="ticket prompt…"></textarea>
         <div class="d-meta">
           id {shortId(sel.id)} · created {new Date(sel.created_at_unix * 1000).toLocaleString()}
+          {#if selMachine}· on {selMachine}{/if}
           {#if sel.thread_id}· bound {shortId(sel.thread_id)}{:else}· unbound{/if}
         </div>
         <div class="d-actions">
           <button onclick={sendPrompt} disabled={!sel.thread_id}>Send to thread</button>
           {#if sel.thread_id}<button onclick={unbind}>Unbind</button>{/if}
+          <button onclick={openMove} title="move this ticket to another machine">Move…</button>
           <div class="spacer"></div>
           <button class="danger" onclick={() => (confirmDel = true)}>Delete</button>
           <button onclick={() => (sel = null)}>Close</button>
@@ -158,6 +188,21 @@
           {#if threadChoices.length === 0}<div class="empty">no threads to bind to</div>{/if}
         </div>
         <div class="d-actions"><button onclick={() => (bindFor = null)}>Cancel</button></div>
+      </div>
+    </div>
+  {/if}
+
+  {#if moveFor}
+    <div class="backdrop" onclick={() => (moveFor = null)} role="presentation">
+      <div class="binder" onclick={(e) => e.stopPropagation()} role="dialog">
+        <h3>Move ticket to a machine</h3>
+        <div class="tlist">
+          {#each machineChoices as m (m)}
+            <button class="trow" onclick={() => moveTo(m)}><span class="tn">{m}</span></button>
+          {/each}
+          {#if machineChoices.length === 0}<div class="empty">no other machine in the mesh</div>{/if}
+        </div>
+        <div class="d-actions"><button onclick={() => (moveFor = null)}>Cancel</button></div>
       </div>
     </div>
   {/if}
