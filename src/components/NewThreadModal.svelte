@@ -3,8 +3,9 @@
   // plus an optional initial message for a headed spawn (sent once the agent is READY).
   import { api, sesh } from '../lib/seshClient.js'
   import { modelSuggestions } from '../lib/models.js'
-  import { dirLabel, rootHeader } from '../lib/boxlabel.js'
+  import { rootHeader } from '../lib/boxlabel.js'
   import FsPicker from './FsPicker.svelte'
+  import CwdFuzzyPicker from './CwdFuzzyPicker.svelte'
 
   // forkFrom: branch an existing thread's conversation (its full prefix, message_id 0). The new
   // thread's agent/cwd default to the source's, so they're pre-filled from forkAgent/forkCwd.
@@ -37,29 +38,20 @@
   // The machine to ROUTE to (undefined = the connected/local daemon, the common case).
   let targetMachine = $derived(machine && machine !== connectedMachine ? machine : undefined)
 
-  // Quick-pick: list the immediate subdirs of the ui_config cwd_roots on the SELECTED machine (the
-  // Obsidian "new thread in a box / mysetup repo" capability), grouped per root. Reloads when the
-  // target machine changes. Only dirs CHECKED OUT on that machine appear (fs reality — see the note).
-  let roots = $state([])           // [{ root, header, entries:[{name,path,label,sub}], err? }]
-  let loadingRoots = $state(false)
-  async function loadRoots() {
-    loadingRoots = true
+  // Quick-pick: a BUTTON per ui_config cwd_root; pressing it opens a fuzzy-search picker over that
+  // root's immediate subdirs (on the SELECTED machine — fsList resolves ~ there). Entry labels come
+  // from ui_config.cwd_labels. Only dirs CHECKED OUT on that machine appear (fs reality — see note).
+  let cwdRoots = $state([])         // string[]
+  let cwdLabels = $state([])        // [{match, label}]
+  let pickRoot = $state(null)       // the root whose fuzzy picker is open, or null
+  async function loadCwdConfig() {
     try {
       const cfg = await api.uiConfigGet()
-      const list = cfg.ui_config?.cwd_roots ?? ['~/mysetup', '~/dev'] // pre-25 daemon → built-in default
-      const groups = []
-      for (const root of list) {
-        try {
-          const r = await api.fsList(root, targetMachine)
-          const entries = (r.entries || []).map((e) => ({ name: e.name, path: e.path, ...dirLabel(e.name) }))
-          groups.push({ root, header: rootHeader(root), entries })
-        } catch { groups.push({ root, header: rootHeader(root), entries: [], err: true }) }
-      }
-      roots = groups
-    } catch { roots = [] } // pre-25 daemon with no ui-config: skip the quick-pick, Browse still works
-    finally { loadingRoots = false }
+      cwdRoots = cfg.ui_config?.cwd_roots ?? ['~/mysetup', '~/dev'] // pre-25 daemon → built-in default
+      cwdLabels = cfg.ui_config?.cwd_labels ?? []
+    } catch { cwdRoots = [] } // pre-25 daemon with no ui-config: skip the quick-pick; Browse still works
   }
-  $effect(() => { void targetMachine; if (!isFork) loadRoots() }) // reload per target machine
+  $effect(() => { if (!isFork) loadCwdConfig() })
 
   async function create() {
     busy = true; err = null
@@ -100,26 +92,13 @@
     {/if}
 
     <label>Working directory
-      {#if !isFork && (loadingRoots || roots.length)}
-        <div class="quickpick">
-          {#if loadingRoots && !roots.length}<div class="qp-msg">loading folders…</div>{/if}
-          {#each roots as g (g.root)}
-            <div class="qp-head">{g.header}</div>
-            {#if g.err}
-              <div class="qp-msg">couldn't list {g.root} on {machine || 'this machine'}</div>
-            {:else if g.entries.length === 0}
-              <div class="qp-msg">(nothing checked out here)</div>
-            {:else}
-              {#each g.entries as e (e.path)}
-                <button class="qp-item" class:on={cwd === e.path} onclick={() => (cwd = e.path)}>
-                  <span class="qp-label">{e.label}</span>
-                  {#if e.sub}<span class="qp-sub">{e.sub}</span>{/if}
-                </button>
-              {/each}
-            {/if}
+      {#if !isFork && cwdRoots.length}
+        <div class="rootbtns">
+          {#each cwdRoots as r (r)}
+            <button class="rootbtn" onclick={() => (pickRoot = r)} title="fuzzy-pick a folder under {r}">{rootHeader(r)}…</button>
           {/each}
         </div>
-        <p class="qp-note">Only folders checked out on <b>{machine || 'this machine'}</b> appear. Use Browse… for anything else.</p>
+        <p class="qp-note">Pick a folder under a root (only what's checked out on <b>{machine || 'this machine'}</b> appears), or Browse… for anything else.</p>
       {/if}
       <div class="cwd">
         <input bind:value={cwd} placeholder="~ or ~/path" />
@@ -162,6 +141,11 @@
   <FsPicker bind:value={cwd} machine={targetMachine} onclose={() => (showPicker = false)} />
 {/if}
 
+{#if pickRoot}
+  <CwdFuzzyPicker root={pickRoot} machine={targetMachine} labels={cwdLabels}
+    onpick={(p) => (cwd = p)} onclose={() => (pickRoot = null)} />
+{/if}
+
 <style>
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex;
     align-items: center; justify-content: center; z-index: 50; }
@@ -173,17 +157,10 @@
   .hint { color: #565f89; font-weight: 400; }
   input, select { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
     padding: 8px; font-size: 13px; font-family: inherit; }
-  .quickpick { max-height: 184px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid #1f2030;
-    border-radius: 8px; padding: 5px; display: flex; flex-direction: column; gap: 1px; }
-  .qp-head { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em;
-    padding: 6px 8px 3px; position: sticky; top: -5px; background: #16161e; }
-  .qp-item { text-align: left; background: none; border: 0; color: #c0caf5; padding: 5px 9px; border-radius: 6px;
-    cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
-  .qp-item:hover { background: #1c1d2b; }
-  .qp-item.on { background: #1e3a4a; }
-  .qp-label { font-size: 13px; }
-  .qp-sub { font-size: 10px; color: #565f89; font-family: ui-monospace, monospace; }
-  .qp-msg { font-size: 11px; color: #565f89; padding: 4px 9px; }
+  .rootbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rootbtn { background: #1a2733; color: #7dcfff; border: 1px solid #1e3a4a; border-radius: 7px;
+    padding: 5px 11px; font-size: 12px; cursor: pointer; }
+  .rootbtn:hover { background: #1c2a3a; }
   .qp-note { margin: 4px 0 0; font-size: 10px; color: #565f89; } .qp-note b { color: #9aa5ce; }
   .cwd { display: flex; gap: 8px; }
   .cwd input { flex: 1; }

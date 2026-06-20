@@ -34,6 +34,22 @@
     saveUiConfig({ cwd_roots: [...(uiCfg.cwd_roots || []), r] })
   }
   const removeRoot = (r) => saveUiConfig({ cwd_roots: (uiCfg.cwd_roots || []).filter((x) => x !== r) })
+
+  // cwd_labels: match→label regex rules. Edited inline (saved on blur); the daemon validates each on
+  // save and a bad regex surfaces as its loud 400 (pushError shows the body). Add via the form below.
+  let newMatch = $state('')
+  let newLabel = $state('')
+  function updateRule(i, field, value) {
+    const rules = (uiCfg.cwd_labels || []).map((r, j) => (j === i ? { ...r, [field]: value } : r))
+    saveUiConfig({ cwd_labels: rules })
+  }
+  const removeRule = (i) => saveUiConfig({ cwd_labels: (uiCfg.cwd_labels || []).filter((_, j) => j !== i) })
+  function addRule() {
+    if (!newMatch.trim()) return
+    const rule = { match: newMatch.trim(), label: newLabel }
+    newMatch = ''; newLabel = ''
+    saveUiConfig({ cwd_labels: [...(uiCfg.cwd_labels || []), rule] })
+  }
   let mode = $state('local')
   let socketPath = $state('')
   let host = $state('')
@@ -128,7 +144,28 @@
           </div>
         </div>
       {/if}
-      <p class="note">Per-daemon UI preferences, stored on the connected daemon (<code>~/.sesh/ui_config.toml</code>). Sets the initial fold state of parent rows; the folders the new-thread quick-pick lists subdirs of (only what's checked out on that machine).</p>
+
+      {#if uiCfg.cwd_labels !== undefined}
+        <div class="roots">
+          <span class="roots-label">Folder label rules (cwd_labels)</span>
+          {#each uiCfg.cwd_labels as rule, i (i)}
+            <div class="rule">
+              <input class="r-match" value={rule.match} placeholder="^~/dev/…(?P&lt;boxid&gt;…)__(?P&lt;boxname&gt;…)$"
+                onchange={(e) => updateRule(i, 'match', e.currentTarget.value)} />
+              <input class="r-label" value={rule.label} placeholder="{'{boxname} <{boxid}>'}"
+                onchange={(e) => updateRule(i, 'label', e.currentTarget.value)} />
+              <button class="rm" onclick={() => removeRule(i)} aria-label="remove rule {i + 1}">×</button>
+            </div>
+          {/each}
+          {#if uiCfg.cwd_labels.length === 0}<div class="root-empty">(none — entries show raw names)</div>{/if}
+          <div class="addrule">
+            <input class="r-match" bind:value={newMatch} placeholder="match regex (Go RE2, ?P&lt;name&gt;)" />
+            <input class="r-label" bind:value={newLabel} placeholder="label template" />
+            <button onclick={addRule} disabled={!newMatch.trim()}>Add</button>
+          </div>
+        </div>
+      {/if}
+      <p class="note">Per-daemon UI preferences, stored on the connected daemon (<code>~/.sesh/ui_config.toml</code>). The label rules format new-thread picker entries (first matching regex wins; template uses named groups + <code>{'{name}'}</code>/<code>{'{path}'}</code>). A bad regex is rejected by the daemon.</p>
     {:else}
       <p class="note">loading…</p>
     {/if}
@@ -152,8 +189,12 @@
   .root-empty { font-size: 11px; color: #565f89; }
   .addroot { display: flex; gap: 6px; }
   .addroot input { flex: 1; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px; padding: 5px 9px; font-size: 12px; }
-  .addroot button { background: #2a2b3d; color: #c0caf5; border: 0; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
-  .addroot button:disabled { opacity: 0.4; }
+  .addroot button, .addrule button { background: #2a2b3d; color: #c0caf5; border: 0; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  .addroot button:disabled, .addrule button:disabled { opacity: 0.4; }
+  .rule, .addrule { display: flex; align-items: center; gap: 6px; }
+  .rule input, .addrule input { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px;
+    padding: 5px 8px; font-size: 11px; font-family: ui-monospace, monospace; min-width: 0; }
+  .r-match { flex: 2; } .r-label { flex: 1; }
   input { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 8px; font-size: 13px; font-family: inherit; }
   .seg { display: flex; border: 1px solid #2a2b3d; border-radius: 7px; overflow: hidden; }
   .seg button { flex: 1; border: 0; background: #1a1b26; color: #9aa5ce; padding: 7px; font-size: 13px; cursor: pointer; }
