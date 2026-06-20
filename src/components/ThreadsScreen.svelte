@@ -355,7 +355,9 @@
   .row .tkt { color: #e0af68; }
   .row .tkt.needs { color: #f7768e; }
   .empty, .placeholder { color: #565f89; padding: 20px; }
-  main { display: flex; flex-direction: column; min-width: 0; }
+  /* min-height:0 is load-bearing: without it this grid item grows to its content height (a long
+     transcript) and overflows the page instead of letting .surface/.log scroll internally. */
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
     border-bottom: 1px solid #1f2030; background: #0e0f17; gap: 12px; flex-shrink: 0; }
   .title { font-size: 15px; font-weight: 600; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
