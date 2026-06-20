@@ -8,7 +8,8 @@
   import { onMount, onDestroy } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
-  import { fontScale, bumpTerm } from '../../lib/fontscale.svelte.js'
+  import { fontScale, bumpTerm, setTerm } from '../../lib/fontscale.svelte.js'
+  import { pinch } from '../../lib/pinch.js'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
   let el
@@ -61,6 +62,12 @@
     tgt.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true }))
   }
   function onTouchEnd() { touchY = null }
+
+  // Pinch-to-zoom over the terminal → its OWN font size (fontScale.term), independent of the app
+  // scale. Reuses the shared store, so the A−/A+ buttons and the desktop controls all stay in sync.
+  let pinchBaseTerm = 13
+  function onPinchStart() { pinchBaseTerm = fontScale.term }
+  function onPinchMove(scale) { setTerm(Math.round(pinchBaseTerm * scale)) }
 
   function connect() {
     term = new Terminal({
@@ -121,7 +128,7 @@
   })
 </script>
 
-<div class="termwrap" style="zoom:{counterZoom}">
+<div class="termwrap" style="zoom:{counterZoom}" use:pinch={{ onpinchstart: onPinchStart, onpinch: onPinchMove }}>
   <div class="term" bind:this={el}></div>
   <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
   <div class="tctl">

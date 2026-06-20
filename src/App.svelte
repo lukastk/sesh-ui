@@ -6,7 +6,8 @@
   import { toasts, dismiss } from './lib/toasts.svelte.js'
   import { conn, noteOk, noteFail } from './lib/connection.svelte.js'
   import { cacheGet } from './lib/snapshot.svelte.js'
-  import { fontScale, bumpScale, resetScale } from './lib/fontscale.svelte.js'
+  import { fontScale, bumpScale, resetScale, setScale } from './lib/fontscale.svelte.js'
+  import { pinch } from './lib/pinch.js'
   import { ago } from './lib/format.js'
   import ThreadsScreen from './components/ThreadsScreen.svelte'
   import TicketsBoard from './components/TicketsBoard.svelte'
@@ -46,6 +47,12 @@
     else if (e.key === '-' || e.key === '_') { e.preventDefault(); bumpScale(-0.1) }
     else if (e.key === '0') { e.preventDefault(); resetScale() }
   }
+
+  // Android pinch-to-zoom drives the SAME app-wide scale store (the terminal has its own pinch →
+  // terminal font size, which claims the gesture so this doesn't also fire over it).
+  let pinchBaseScale = 1
+  function onPinchStart() { pinchBaseScale = fontScale.scale }
+  function onPinchMove(scale) { setScale(pinchBaseScale * scale) }
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -76,7 +83,7 @@
     <button class="gear" onclick={() => (showSettings = true)} title="Connection settings" aria-label="settings">⚙</button>
   </nav>
 
-  <div class="body">
+  <div class="body" use:pinch={{ onpinchstart: onPinchStart, onpinch: onPinchMove }}>
     {#if screen === 'threads'}<ThreadsScreen />
     {:else if screen === 'tickets'}<TicketsBoard />
     {:else if screen === 'machines'}<MachinesScreen />
