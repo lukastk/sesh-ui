@@ -11,6 +11,7 @@ import org.java_websocket.WebSocket as LbSocket
 import org.java_websocket.handshake.ClientHandshake
 import org.java_websocket.server.WebSocketServer
 import java.net.InetSocketAddress
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -71,15 +72,12 @@ class SeshWsBridge(private val store: SeshStore) {
         override fun onStart() {}
 
         override fun onOpen(conn: LbSocket, handshake: ClientHandshake) {
-            val host = store.host
-            val port = store.port
-            val token = store.token
-            if (host.isEmpty() || token.isEmpty()) {
+            val url = upstreamUrl(handshake.resourceDescriptor)
+            if (url == null) {
                 conn.close(1011, "sesh: no endpoint/token configured")
                 return
             }
-            val reqPath = stripMachineAndAddToken(handshake.resourceDescriptor, token)
-            val req = Request.Builder().url("ws://$host:$port$reqPath").build()
+            val req = Request.Builder().url(url).build()
             val upstream = client.newWebSocket(req, object : WebSocketListener() {
                 override fun onMessage(webSocket: OkWebSocket, text: String) {
                     if (conn.isOpen) conn.send(text)
@@ -128,19 +126,34 @@ class SeshWsBridge(private val store: SeshStore) {
     }
 
     /**
-     * Rewrite the WebView's request resource ("/v1/threads/rpc?id=…&__machine=…") into the upstream
-     * path: drop the renderer-only `__machine` param and append the bearer token as `?token=`.
+     * Resolve the WebView's request resource ("/v1/threads/rpc?id=…&__machine=…") into the full
+     * upstream ws:// URL: pick the target daemon (a dial-able PEER's api_addr when `__machine` names
+     * one — cross-machine chat — else the configured hub), drop the renderer-only `__machine` param,
+     * and append the bearer token as `?token=` (read from the Keystore here, never in the WebView).
+     * Returns null if there is no token / no endpoint to dial.
      */
-    private fun stripMachineAndAddToken(resource: String, token: String): String {
+    private fun upstreamUrl(resource: String): String? {
+        val token = store.token
+        if (token.isEmpty()) return null
+
         val qIdx = resource.indexOf('?')
-        val tokenParam = "token=" + URLEncoder.encode(token, "UTF-8")
-        if (qIdx < 0) return "$resource?$tokenParam"
-        val path = resource.substring(0, qIdx)
-        val kept = resource.substring(qIdx + 1)
-            .split('&')
-            .filter { it.isNotEmpty() && !it.startsWith("__machine=") }
-            .toMutableList()
-        kept.add(tokenParam)
-        return "$path?${kept.joinToString("&")}"
+        val path = if (qIdx < 0) resource else resource.substring(0, qIdx)
+        var machine: String? = null
+        val kept = ArrayList<String>()
+        if (qIdx >= 0) {
+            for (p in resource.substring(qIdx + 1).split('&')) {
+                if (p.isEmpty()) continue
+                if (p.startsWith("__machine=")) {
+                    machine = URLDecoder.decode(p.substring("__machine=".length), "UTF-8")
+                } else {
+                    kept.add(p)
+                }
+            }
+        }
+        // A dial-able peer → its api_addr; otherwise the hub. No target → no dial.
+        val target = store.peerAddr(machine)
+            ?: if (store.host.isNotEmpty()) "${store.host}:${store.port}" else return null
+        kept.add("token=" + URLEncoder.encode(token, "UTF-8"))
+        return "ws://$target$path?${kept.joinToString("&")}"
     }
 }

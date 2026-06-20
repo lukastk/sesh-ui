@@ -12,11 +12,24 @@ Verified on-device over Tailscale: real all-machines grid (25 threads) + tickets
 AndroidKeyStore (persists across reinstall); responsive phone layout (no two-axis scroll); offline
 cold-start cache behind a loud staleness banner.
 
-**Hub daemon: mymain:7878** (Tailscale <your-tailscale-ip>), rebuilt from origin/main `5fd5157` — serves the
-`?token=` WS auth + `/v1/peers` (schema 22). Fallback: macstudio:7878 (100.125.115.38, still on the
-older binary — HTTP works, streaming would need its redeploy). Token: `~/.sesh/api-token` on macbook.
-Phone: android-main (Pixel 9, <your-tailscale-ip>). **Set the endpoint + token on-device in Settings** (the
-token is entered at runtime → Keystore; it is NEVER baked into the committed app).
+**Hub daemon: mymain:7878**, serving the `?token=` WS auth + `/v1/peers` (schema 22); the rest of the
+fleet (macbook, macstudio) is also on schema 22, so any of them can be the hub or a dial-able peer.
+Token: the shared fleet-wide `SESH_API_TOKEN` (`~/.sesh/api-token`). Phone: android-main (Pixel 9).
+**Set the endpoint (hub host:port, + optional fallback) + token on-device in Settings** (the token is
+entered at runtime → Keystore; it is NEVER baked into the committed app — no IPs/tokens in the repo).
+
+**Cross-machine chat (native peer-dialing):** the phone is on Tailscale and the token is identical
+fleet-wide, so a thread on a NON-hub machine is chatted with by dialing that machine's `api_addr`
+DIRECTLY. `peerInfo()` discovers dial-able peers from the hub's `GET /v1/peers` (each peer with an
+`api_addr`); `SeshHttp` dials the peer's `api_addr` for that thread's transcript/verbs, and
+`SeshWsBridge` points the upstream rpc/terminal WS at the peer's `api_addr` (with `?token=`). Mirrors
+the Electron peers.json path — no daemon change. ThreadsScreen then renders real chat for a remote
+thread instead of the gated notice.
+
+**Image/file attach:** Capacitor's `BridgeWebChromeClient` already wires `<input type=file>` to the
+system picker (ACTION_GET_CONTENT), so the composer 📎 opens the gallery/files; `READ_MEDIA_IMAGES`
+is declared for gallery reads. The base64 upload → blob store goes over the native transport via the
+shared `src/lib/blobs.js` (no Android-specific JS).
 
 ## Build/run commands (macbook)
 
@@ -83,10 +96,10 @@ plugin dials the peer's api_addr like the desktop main process. A `/v1/peers` li
 - Offline cache: **`src/lib/snapshot.svelte.js`** (gated to the android transport) + a loud staleness
   line on the App banner.
 
+- **Cross-machine peer-dialing**: `SeshStore` holds an in-memory machine→`api_addr` map (set by
+  `peerInfo()` from `/v1/peers`); `SeshHttp` and `SeshWsBridge` dial the peer's `api_addr` directly
+  for a requested `machine`, with the shared fleet-wide token. Unlike Electron (which reads
+  `peers.json`), the phone discovers peers from the hub — no local peers file.
+
 ## Follow-ups (not blocking; same as desktop)
-- **Cross-machine chat from the phone**: streaming is served against the hub only; a non-hub thread's
-  chat shows the same gated notice as the web/desktop build (`peerInfo` reports no dial-able peers).
-  The right fix is the sesh **hub-proxy** backlog item (the connected daemon proxies rpc/terminal +
-  transcript to the owning peer) — do NOT hack per-daemon dialing into the client. See PLAN.md backlog.
-- **macstudio fallback** still runs the older binary (HTTP works; its streaming would need a redeploy).
 - **Release build / signing / Play-less install**: only the debug APK is built so far (`adb install`).

@@ -30,13 +30,14 @@ class SeshHttp(private val store: SeshStore) {
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
     fun request(method: String, path: String, body: String?, machine: String): JSObject {
-        // `machine` is the cross-machine-chat target. The MVP streams/serves only against the
-        // configured hub; a non-hub machine is surfaced as the same gated notice the web build
-        // shows (peerInfo reports no dial-able peers), so we never silently mis-route a request.
-        val endpoints = endpoints()
-        if (endpoints.isEmpty()) return err("$path: no endpoint configured — open Settings", 0)
         val token = store.token
         if (token.isEmpty()) return err("$path: no token configured — open Settings", 0)
+        // Cross-machine: when `machine` is a dial-able peer (has an api_addr from /v1/peers), dial
+        // THAT peer's api_addr DIRECTLY over Tailscale with the shared fleet-wide token (no hub hop,
+        // no fallback — a specific machine was requested). Otherwise dial the hub (primary→fallback).
+        val peerAddr = store.peerAddr(machine)
+        val endpoints = if (peerAddr != null) listOf(splitHostPort(peerAddr)) else endpoints()
+        if (endpoints.isEmpty()) return err("$path: no endpoint configured — open Settings", 0)
 
         var lastErr = "$path: unreachable"
         for ((host, port) in endpoints) {
@@ -66,6 +67,13 @@ class SeshHttp(private val store: SeshStore) {
         if (store.host.isNotEmpty()) list.add(store.host to store.port)
         if (store.fallbackHost.isNotEmpty()) list.add(store.fallbackHost to store.fallbackPort)
         return list
+    }
+
+    /** Split an "host:port" api_addr into (host, port), defaulting the port to the daemon's. */
+    private fun splitHostPort(addr: String): Pair<String, Int> {
+        val i = addr.lastIndexOf(':')
+        if (i <= 0) return addr to SeshStore.DEFAULT_PORT
+        return addr.substring(0, i) to (addr.substring(i + 1).toIntOrNull() ?: SeshStore.DEFAULT_PORT)
     }
 
     private fun ok(data: String) = JSObject().apply { put("ok", true); put("data", data) }

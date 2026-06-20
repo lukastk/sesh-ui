@@ -58,6 +58,18 @@ class SeshStore(context: Context) {
     /** Has the user picked a hub + token? Drives the first-run "configure your connection" UX. */
     val configured: Boolean get() = host.isNotEmpty() && token.isNotEmpty()
 
+    // ── Dial-able peers (cross-machine chat) ────────────────────────────────────────────────
+    // In-memory map machine → api_addr ("host:port"), discovered from the hub's GET /v1/peers by
+    // peerInfo(). NOT persisted — it's re-fetched each session. A thread on a peer machine is dialed
+    // DIRECTLY at its api_addr over Tailscale with the SAME fleet-wide token (the Electron transport
+    // does the equivalent from peers.json). Volatile: written on a poll thread, read on request/WS threads.
+    @Volatile
+    private var peers: Map<String, String> = emptyMap()
+
+    fun setPeers(p: Map<String, String>) { peers = p }
+    /** The api_addr ("host:port") to dial for a peer machine, or null if not a dial-able peer. */
+    fun peerAddr(machine: String?): String? = if (machine.isNullOrEmpty()) null else peers[machine]
+
     private fun secretKey(): SecretKey {
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         (ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }

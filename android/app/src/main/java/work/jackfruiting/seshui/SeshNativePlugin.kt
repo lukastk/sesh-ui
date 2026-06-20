@@ -54,9 +54,11 @@ class SeshNativePlugin : Plugin() {
     }
 
     /**
-     * The connected hub's machine + the peers it can dial for cross-machine chat. The MVP streams
-     * only against the hub itself, so we report NO dial-able peers: the UI then shows the same
-     * cross-machine notice as the web build for a non-hub thread (never a silently wrong route).
+     * The connected hub's machine + the peers it can dial for cross-machine chat. Each peer the hub
+     * reports with an `api_addr` (GET /v1/peers) is dial-able DIRECTLY from the phone over Tailscale
+     * with the shared fleet-wide token, so we report it as dial-able and cache machine→api_addr for
+     * SeshHttp / SeshWsBridge (mirrors the Electron peers.json path). ThreadsScreen then renders real
+     * chat (rpc/terminal/transcript) for a remote thread instead of the gated notice.
      */
     @PluginMethod
     fun peerInfo(call: PluginCall) {
@@ -66,9 +68,27 @@ class SeshNativePlugin : Plugin() {
             if (st.optBoolean("ok", false)) {
                 try { connected = JSObject(st.getString("data")).getString("machine") } catch (_: Exception) {}
             }
+
+            val peerMap = HashMap<String, String>()
+            val pr = http.request("GET", "/peers", null, "")
+            if (pr.optBoolean("ok", false)) {
+                try {
+                    val arr = JSObject(pr.getString("data")).getJSONArray("peers")
+                    for (i in 0 until arr.length()) {
+                        val p = arr.getJSONObject(i)
+                        val m = p.optString("machine", "")
+                        val addr = p.optString("api_addr", "")
+                        if (m.isNotEmpty() && addr.isNotEmpty()) peerMap[m] = addr
+                    }
+                } catch (_: Exception) { /* older hub w/o /v1/peers → no dial-able peers */ }
+            }
+            store.setPeers(peerMap)
+
+            val peersArr = JSONArray()
+            for (m in peerMap.keys) peersArr.put(m)
             call.resolve(JSObject().apply {
                 put("connected", connected)
-                put("peers", JSONArray())
+                put("peers", peersArr)
             })
         }
     }
