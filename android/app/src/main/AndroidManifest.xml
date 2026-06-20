@@ -39,4 +39,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Gallery / image attach (📎 in the chat composer). Capacitor's BridgeWebChromeClient wires
+         <input type=file> to the system picker (ACTION_GET_CONTENT, which needs no runtime grant);
+         READ_MEDIA_IMAGES (API 33+) covers direct gallery reads. READ_EXTERNAL_STORAGE is the
+         pre-33 equivalent (capped so it isn't requested on newer Android). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 </manifest>
