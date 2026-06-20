@@ -7,6 +7,7 @@
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
   import { uploadBlob } from '../../lib/blobs.js'
+  import Markdown from '../Markdown.svelte'
 
   let { threadId, agentKind = 'pi', machine = undefined } = $props()  // machine: remote thread's owning daemon
 
@@ -111,7 +112,7 @@
     {#each msgs as m, i (i)}
       <div class="bubble {m.role}">
         {#if m.thinking}<div class="thinking">{m.thinking}</div>{/if}
-        {#if m.text}<div class="text">{m.text}</div>{/if}
+        {#if m.text}{#if m.role === 'user' || m.role === 'error'}<div class="text">{m.text}</div>{:else}<div class="text"><Markdown text={m.text} /></div>{/if}{/if}
       </div>
     {/each}
     {#if sending}<div class="bubble assistant pending">…thinking</div>{/if}

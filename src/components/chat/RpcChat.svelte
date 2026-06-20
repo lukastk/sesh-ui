@@ -12,6 +12,7 @@
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
+  import Markdown from '../Markdown.svelte'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
 
@@ -159,7 +160,7 @@
     {#each bubbles as m, i (m.key)}
       <div class="bubble {m.role}">
         {#if m.thinking}<div class="thinking">{m.thinking}</div>{/if}
-        <div class="text">{m.text}{#if m.role === 'assistant' && streaming && i === bubbles.length - 1}<span class="cursor"></span>{/if}</div>
+        <div class="text">{#if m.role === 'user'}{m.text}{:else}<Markdown text={m.text} />{/if}{#if m.role === 'assistant' && streaming && i === bubbles.length - 1}<span class="cursor"></span>{/if}</div>
       </div>
     {/each}
     {#if bubbles.length === 0}<div class="empty">No turns yet — send a message (streams live), or type in the pi TUI.</div>{/if}
