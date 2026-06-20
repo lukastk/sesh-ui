@@ -422,9 +422,14 @@
     .screen.detail aside { display: none; }
     .screen.detail main { display: flex; }
     .back { display: inline-flex; align-items: center; }
-    header { padding: 10px 12px; }
-    .title { flex: 1; }
-    .actions { gap: 6px; }
+    /* Header: ‹ back + title on row 1; the action bar drops to its OWN full-width row that scrolls
+       horizontally (swipe) — buttons keep their natural width (flex-shrink:0) so none is ever clipped
+       off-screen. */
+    header { padding: 10px 12px; flex-wrap: wrap; }
+    .title { flex: 1 1 auto; min-width: 0; }
+    .actions { gap: 6px; flex-basis: 100%; flex-wrap: nowrap; justify-content: flex-start;
+      overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+    .actions > button, .actions .seg { flex-shrink: 0; }
     .actions > button, .seg button { padding: 5px 9px; }
   }
 </style>
