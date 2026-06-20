@@ -17,10 +17,23 @@
       .then((r) => { uiCfg = r.ui_config || {} })
       .catch((e) => { if (/:\s*404/.test(String(e))) uiUnsupported = true; else pushError(e) })
   })
-  async function setCollapseParents(v) {
-    try { const r = await api.uiConfigSet({ collapse_parents: v }); uiCfg = r.ui_config; pushInfo('UI config saved') }
-    catch (e) { pushError(`ui-config: ${e.message ?? e}`); uiCfg = { ...uiCfg } } // revert the checkbox to the saved value
+  let newRoot = $state('')
+  // POST is a full REPLACE (an absent key resets to default), so always send the WHOLE config —
+  // merge the patch over the current values so changing one setting never clobbers another.
+  async function saveUiConfig(patch) {
+    const next = { collapse_parents: uiCfg.collapse_parents, cwd_roots: uiCfg.cwd_roots || [], ...patch }
+    try { const r = await api.uiConfigSet(next); uiCfg = r.ui_config; pushInfo('UI config saved') }
+    catch (e) { pushError(`ui-config: ${e.message ?? e}`); uiCfg = { ...uiCfg } } // revert the controls
   }
+  const setCollapseParents = (v) => saveUiConfig({ collapse_parents: v })
+  function addRoot() {
+    const r = newRoot.trim()
+    if (!r) return
+    if ((uiCfg.cwd_roots || []).includes(r)) { newRoot = ''; return }
+    newRoot = ''
+    saveUiConfig({ cwd_roots: [...(uiCfg.cwd_roots || []), r] })
+  }
+  const removeRoot = (r) => saveUiConfig({ cwd_roots: (uiCfg.cwd_roots || []).filter((x) => x !== r) })
   let mode = $state('local')
   let socketPath = $state('')
   let host = $state('')
@@ -101,7 +114,21 @@
         <input type="checkbox" checked={uiCfg.collapse_parents} onchange={(e) => setCollapseParents(e.currentTarget.checked)} />
         Collapse parent threads by default
       </label>
-      <p class="note">Per-daemon UI preferences, stored on the connected daemon (<code>~/.sesh/ui_config.toml</code>). Sets the initial fold state of parent rows; you can still expand/collapse individual parents.</p>
+
+      {#if uiCfg.cwd_roots !== undefined}
+        <div class="roots">
+          <span class="roots-label">New-thread folders (cwd_roots)</span>
+          {#each uiCfg.cwd_roots as r (r)}
+            <div class="root"><code>{r}</code><button class="rm" onclick={() => removeRoot(r)} aria-label="remove {r}">×</button></div>
+          {/each}
+          {#if uiCfg.cwd_roots.length === 0}<div class="root-empty">(none)</div>{/if}
+          <div class="addroot">
+            <input bind:value={newRoot} placeholder="~/path" onkeydown={(e) => e.key === 'Enter' && addRoot()} />
+            <button onclick={addRoot} disabled={!newRoot.trim()}>Add</button>
+          </div>
+        </div>
+      {/if}
+      <p class="note">Per-daemon UI preferences, stored on the connected daemon (<code>~/.sesh/ui_config.toml</code>). Sets the initial fold state of parent rows; the folders the new-thread quick-pick lists subdirs of (only what's checked out on that machine).</p>
     {:else}
       <p class="note">loading…</p>
     {/if}
@@ -116,6 +143,17 @@
   .sep { width: 100%; border: 0; border-top: 1px solid #1f2030; margin: 4px 0; }
   label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9aa5ce; }
   .check { flex-direction: row; align-items: center; gap: 8px; color: #c0caf5; font-size: 13px; }
+  .roots { display: flex; flex-direction: column; gap: 4px; }
+  .roots-label { font-size: 11px; color: #565f89; }
+  .root { display: flex; align-items: center; gap: 8px; background: #1a1b26; border: 1px solid #232433;
+    border-radius: 6px; padding: 4px 9px; }
+  .root code { flex: 1; color: #7dcfff; font-size: 12px; }
+  .root .rm { background: none; border: 0; color: #ffb4c0; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .root-empty { font-size: 11px; color: #565f89; }
+  .addroot { display: flex; gap: 6px; }
+  .addroot input { flex: 1; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px; padding: 5px 9px; font-size: 12px; }
+  .addroot button { background: #2a2b3d; color: #c0caf5; border: 0; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  .addroot button:disabled { opacity: 0.4; }
   input { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 8px; font-size: 13px; font-family: inherit; }
   .seg { display: flex; border: 1px solid #2a2b3d; border-radius: 7px; overflow: hidden; }
   .seg button { flex: 1; border: 0; background: #1a1b26; color: #9aa5ce; padding: 7px; font-size: 13px; cursor: pointer; }
