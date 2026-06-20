@@ -12,10 +12,10 @@ Verified on-device over Tailscale: real all-machines grid (25 threads) + tickets
 AndroidKeyStore (persists across reinstall); responsive phone layout (no two-axis scroll); offline
 cold-start cache behind a loud staleness banner.
 
-**Hub daemon: mymain:7878** (Tailscale 100.106.17.33), rebuilt from origin/main `5fd5157` — serves the
+**Hub daemon: mymain:7878** (Tailscale <your-tailscale-ip>), rebuilt from origin/main `5fd5157` — serves the
 `?token=` WS auth + `/v1/peers` (schema 22). Fallback: macstudio:7878 (100.125.115.38, still on the
 older binary — HTTP works, streaming would need its redeploy). Token: `~/.sesh/api-token` on macbook.
-Phone: android-main (Pixel 9, 100.67.70.114). **Set the endpoint + token on-device in Settings** (the
+Phone: android-main (Pixel 9, <your-tailscale-ip>). **Set the endpoint + token on-device in Settings** (the
 token is entered at runtime → Keystore; it is NEVER baked into the committed app).
 
 ## Build/run commands (macbook)

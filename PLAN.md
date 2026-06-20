@@ -140,7 +140,7 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
 Built on **macbook** (the SDK-equipped machine; mymain had no JDK/SDK). See **`ANDROID.md`** for the
 full design. Toolchain installed (JDK 17 Temurin, Android SDK android-34 + build-tools 34, Gradle 8.2.1
 wrapper). The **hub daemon is mymain:7878** (rebuilt from origin/main `5fd5157` — serves `?token=` WS +
-`/v1/peers`, schema 22, verified live over Tailscale). Phone = android-main (Pixel 9, 100.67.70.114),
+`/v1/peers`, schema 22, verified live over Tailscale). Phone = android-main (Pixel 9, <your-tailscale-ip>),
 paired over wifi. **Verified on-device:** real all-machines grid (25 threads) + tickets (47) + machines
 (3, peer add/remove), headless transcript (real agent output), pi RPC streaming bubbles AND live xterm
 terminal over the `?token=` WS loopback bridge, token in the Keystore (survives reinstall), responsive
