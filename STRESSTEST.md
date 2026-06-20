@@ -83,6 +83,7 @@ Legend: ✅ pass · 🔧 fixed-bug (commit) · ⚠️ known-limitation
 - ✅ Blob attach END-TO-END: 📎 upload → @blob token → send-headless → the daemon expands the token to
   a real path in the delivered message. (A sandboxed headless claude then can't read outside its cwd —
   a sesh sandbox policy, not a UI issue; a yolo/headful agent reads it.)
-- ⚠️ Hooks enable/disable + Test: not exercised live (the dev daemon has no hooks configured); the
-  list/mute/test code paths are straightforward and the empty-state renders.
+- ✅ Hooks (after adding two `[[hooks]]` to the dev daemon config): list renders (event/edge/command);
+  **Test** runs the command synchronously and shows output ("idle-hook-fired", ok); **Enable/Disable**
+  toggles the mute. Empty-state also confirmed earlier.
 - ⚠️ Peer add/remove: blocked — no `/v1/peers` daemon API (sesh-side ask, logged in PLAN backlog).
