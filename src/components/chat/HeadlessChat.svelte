@@ -9,7 +9,10 @@
   import { uploadBlob } from '../../lib/blobs.js'
   import Markdown from '../Markdown.svelte'
 
-  let { threadId, agentKind = 'pi', machine = undefined } = $props()  // machine: remote thread's owning daemon
+  // headful: this thread has a LIVE pane (claude/codex viewed in transcript mode) — the composer
+  // delivers via `thread send` (send-keys into the pane), NOT send-headless, and the transcript is
+  // polled so the live agent's streamed reply appears.
+  let { threadId, agentKind = 'pi', machine = undefined, headful = false } = $props()
 
   let msgs = $state([])       // {role, text, thinking?}
   let draft = $state('')
@@ -79,14 +82,21 @@
     attachments = []            // the @blob tokens are now in the sent text
     await scrollDown(true)      // sending always snaps to the latest
     try {
-      await api.sendHeadless(threadId, text, machine)
-      // Poll until the turn completes, then reload the durable transcript for the full turn.
-      for (let i = 0; i < 180; i++) {
-        const r = await api.headlessReply(threadId, machine)
-        if (!r.working && r.have_reply) break
-        await new Promise((res) => setTimeout(res, 1000))
+      if (headful) {
+        // Deliver into the LIVE pane (send-keys + submit); the agent replies asynchronously into
+        // its transcript, which the periodic poll (below) picks up. Quick reload for the echo.
+        await api.send(threadId, text, machine)
+        await load()
+      } else {
+        await api.sendHeadless(threadId, text, machine)
+        // Poll until the turn completes, then reload the durable transcript for the full turn.
+        for (let i = 0; i < 180; i++) {
+          const r = await api.headlessReply(threadId, machine)
+          if (!r.working && r.have_reply) break
+          await new Promise((res) => setTimeout(res, 1000))
+        }
+        await load()
       }
-      await load()
     } catch (e) {
       msgs = [...msgs, { role: 'error', text: String(e) }]
     } finally {
@@ -104,6 +114,13 @@
     msgs = []; atBottom = true
     load()
   })
+  // A headful pane's reply streams into the transcript over time — poll-reload while viewing it
+  // (skip while a send is in flight so the optimistic bubble isn't clobbered mid-send).
+  $effect(() => {
+    if (!headful) return
+    const t = setInterval(() => { if (!sending) load() }, 2500)
+    return () => clearInterval(t)
+  })
 </script>
 
 <div class="chat">
@@ -116,7 +133,7 @@
       </div>
     {/each}
     {#if sending}<div class="bubble assistant pending">…thinking</div>{/if}
-    {#if msgs.length === 0 && !loadErr && !sending}<div class="empty">No transcript yet — send a headless turn below.</div>{/if}
+    {#if msgs.length === 0 && !loadErr && !sending}<div class="empty">{headful ? 'No transcript yet — send a message into the live pane below.' : 'No transcript yet — send a headless turn below.'}</div>{/if}
   </div>
   {#if !atBottom}
     <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
@@ -130,7 +147,7 @@
       </div>
     {/if}
     <div class="composer">
-      <textarea bind:value={draft} placeholder="Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach" onkeydown={onkey} onpaste={onPaste}></textarea>
+      <textarea bind:value={draft} placeholder={headful ? 'Send into the live pane… (⌘/Ctrl+Enter) · drop/paste a file' : 'Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach'} onkeydown={onkey} onpaste={onPaste}></textarea>
       <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
       <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image">{uploading ? '…' : '📎'}</button>
       <button onclick={send} disabled={sending}>{sending ? '…' : 'Send'}</button>

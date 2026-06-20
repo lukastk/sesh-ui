@@ -333,7 +333,7 @@
         {:else if surface === 'terminal'}
           {#key selected.id}<Terminal threadId={selected.id} machine={chatMachine} />{/key}
         {:else if surface === 'headless'}
-          {#key selected.id}<HeadlessChat threadId={selected.id} agentKind={selected.agent_kind} machine={chatMachine} />{/key}
+          {#key selected.id}<HeadlessChat threadId={selected.id} agentKind={selected.agent_kind} machine={chatMachine} headful={selected.head === 'headful'} />{/key}
         {/if}
       </section>
     {/if}
