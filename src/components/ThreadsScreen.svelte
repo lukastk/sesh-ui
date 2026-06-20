@@ -257,7 +257,7 @@
     <div class="list">
       {#each filtered as { row, depth, hasChildren, collapsed } (row.id)}
         <button class="row {selectedId === row.id ? 'sel' : ''}" class:dragging={dragId === row.id} class:dropover={dropOn === row.id}
-          style="padding-left:{14 + depth * 16}px" onclick={() => select(row)}
+          style="padding-left:{20 + depth * 16}px" onclick={() => select(row)}
           draggable="true" ondragstart={(e) => onDragStart(e, row.id)} ondragend={onDragEnd}
           ondragover={(e) => { if (dragId && dragId !== row.id) { e.preventDefault(); dropOn = row.id } }}
           ondragleave={() => { if (dropOn === row.id) dropOn = null }}
@@ -426,8 +426,8 @@
   .row { position: relative; width: 100%; text-align: left; display: grid; grid-template-columns: 22px 1fr auto;
     gap: 2px 8px; align-items: center; background: none; border: 0; color: inherit; padding: 9px 14px;
     cursor: pointer; border-left: 2px solid transparent; }
-  .fold { position: absolute; top: 8px; width: 14px; text-align: center; color: #565f89; font-size: 10px;
-    cursor: pointer; user-select: none; }
+  .fold { position: absolute; top: 0; bottom: 0; width: 20px; display: flex; align-items: center;
+    justify-content: center; color: #565f89; font-size: 14px; cursor: pointer; user-select: none; }
   .fold:hover { color: #c0caf5; }
   .row.dragging { opacity: 0.45; }
   .row.dropover { background: #1c2a3a; border-left-color: #7dcfff; box-shadow: inset 0 0 0 1px #1e3a4a; }
