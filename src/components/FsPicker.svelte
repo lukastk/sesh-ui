@@ -4,7 +4,7 @@
   // cross-machine spawn — never a baked-in local home). Used by the new-thread modal.
   import { api } from '../lib/seshClient.js'
 
-  let { value = $bindable('~'), onclose } = $props()
+  let { value = $bindable('~'), machine = undefined, onclose } = $props()  // machine: list on the TARGET daemon
 
   let cur = $state('~')        // the ~-relative dir currently being browsed
   let entries = $state([])
@@ -18,7 +18,7 @@
   }
 
   async function listDir(p) {
-    try { const r = await api.fsList(p); cur = r.path; entries = r.entries || []; err = null }
+    try { const r = await api.fsList(p, machine); cur = r.path; entries = r.entries || []; err = null }
     catch (e) { err = String(e) }
   }
   function choose() { value = cur; onclose?.() }

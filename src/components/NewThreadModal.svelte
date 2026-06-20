@@ -1,7 +1,7 @@
 <script>
   // New-thread modal → POST /v1/threads. Agent / name / cwd (fs picker) / headless / mode,
   // plus an optional initial message for a headed spawn (sent once the agent is READY).
-  import { api } from '../lib/seshClient.js'
+  import { api, sesh } from '../lib/seshClient.js'
   import FsPicker from './FsPicker.svelte'
 
   // forkFrom: branch an existing thread's conversation (its full prefix, message_id 0). The new
@@ -19,6 +19,21 @@
   let err = $state(null)
   let showPicker = $state(false)
 
+  // Target machine. Default = the connected/local daemon; a peer routes the spawn there (sesh
+  // `thread new --machine`). Forks inherit the source's machine, so the picker is hidden for forks.
+  let connectedMachine = $state(null)
+  let machines = $state([])
+  let machine = $state('')   // '' until peerInfo resolves; then the connected machine
+  $effect(() => {
+    sesh.peerInfo().then((i) => {
+      connectedMachine = i.connected
+      machines = [i.connected, ...(i.peers || [])].filter(Boolean)
+      if (!machine) machine = i.connected || ''
+    }).catch(() => {})
+  })
+  // The machine to ROUTE to (undefined = the connected/local daemon, the common case).
+  let targetMachine = $derived(machine && machine !== connectedMachine ? machine : undefined)
+
   async function create() {
     busy = true; err = null
     try {
@@ -26,7 +41,7 @@
       if (parent) req.parent = parent
       if (isFork) { req.fork_from = forkFrom; req.message_id = 0 } // branch the whole conversation
       if (!headless && msg.trim()) req.msg = msg.trim()
-      const res = await api.threadNew(req)
+      const res = await api.threadNew(req, targetMachine)
       oncreated(res.thread.id)
     } catch (e) { err = String(e); busy = false }
   }
@@ -45,6 +60,16 @@
     </label>
 
     <label>Name <input bind:value={name} placeholder="(optional)" /></label>
+
+    {#if !isFork && machines.length > 1}
+      <label>Machine
+        <select bind:value={machine}>
+          {#each machines as m (m)}
+            <option value={m}>{m}{m === connectedMachine ? ' (this)' : ''}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
 
     <label>Working directory
       <div class="cwd">
@@ -78,7 +103,7 @@
 </div>
 
 {#if showPicker}
-  <FsPicker bind:value={cwd} onclose={() => (showPicker = false)} />
+  <FsPicker bind:value={cwd} machine={targetMachine} onclose={() => (showPicker = false)} />
 {/if}
 
 <style>
