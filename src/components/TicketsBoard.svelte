@@ -224,6 +224,14 @@
   .topbar .primary { background: #7aa2f7; color: #11121a; border: 0; font-weight: 600; }
   .topbar .warn { color: #e0af68; font-size: 11px; }
   .board { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px; overflow: auto; overscroll-behavior: contain; min-height: 0; }
+  /* Phone width: 5 columns don't fit — swipe horizontally through near-full-width columns instead
+     of cramming them. Each column scrolls its own cards vertically. */
+  @media (max-width: 720px) {
+    .board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 82vw;
+      overflow-x: auto; scroll-snap-type: x proximity; padding: 12px; }
+    .col { scroll-snap-align: start; }
+    .topbar input { min-width: 0; flex: 1; }
+  }
   .col { background: #0e0f17; border: 1px solid #1f2030; border-radius: 10px; display: flex; flex-direction: column; min-height: 0; }
   .col-head { padding: 10px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; display: flex; justify-content: space-between; }
   .col-head span { color: #565f89; }

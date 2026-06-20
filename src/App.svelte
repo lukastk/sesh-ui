@@ -101,9 +101,13 @@
   :global(:root) { color-scheme: dark; }
   :global(body) { margin: 0; background: #11121a; color: #c0caf5;
     font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  /* Only the app's internal regions scroll (.list, the chat log, …); the page itself never does.
+     Without this a layout wider/taller than the viewport let the whole page scroll on both axes
+     (very visible on a phone). */
+  :global(html, body) { height: 100%; overflow: hidden; overscroll-behavior: none; }
   :global(*) { box-sizing: border-box; }
 
-  .app { display: flex; flex-direction: column; height: 100vh; }
+  .app { display: flex; flex-direction: column; height: 100dvh; max-width: 100vw; overflow: hidden; }
   nav { display: flex; align-items: center; gap: 18px; padding: 0 16px; height: 48px;
     background: #0b0c12; border-bottom: 1px solid #1f2030; flex-shrink: 0; }
   .brand { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
@@ -145,4 +149,15 @@
   .t-x { background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; line-height: 1;
     opacity: 0.7; padding: 0; }
   .t-x:hover { opacity: 1; }
+
+  /* Phone width: tighten the nav and let it scroll horizontally if the tabs don't fit, drop the
+     verbose daemon text (the dot still shows reachability; Machines shows the detail), and let the
+     banner/toasts span the width. */
+  @media (max-width: 720px) {
+    nav { gap: 8px; padding: 0 10px; overflow-x: auto; }
+    .tabs button { padding: 6px 10px; }
+    .conn .txt { display: none; }
+    .connbanner { left: 8px; right: 8px; max-width: none; }
+    .toasts { left: 8px; right: 8px; max-width: none; }
+  }
 </style>

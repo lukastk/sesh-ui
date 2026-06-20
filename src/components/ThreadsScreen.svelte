@@ -164,7 +164,7 @@
   )
 </script>
 
-<div class="screen">
+<div class="screen" class:detail={!!selected}>
   <aside>
     <div class="head">
       <span>Threads</span>
@@ -214,6 +214,7 @@
       <div class="placeholder">Select a thread to chat with it.</div>
     {:else}
       <header>
+        <button class="back" onclick={() => (selectedId = null)} aria-label="back to thread list" title="back to threads">‹</button>
         <div class="title">
           <span class="g {selected.busy === 'busy' ? 'busy' : ''}">{glyph(selected)}</span>
           <span class="name">{selected.name || '(nameless)'}</span>
@@ -404,4 +405,23 @@
   .rprow .g { color: #565f89; font-size: 12px; } .rprow .nm { flex: 1; } .rprow .ag { font-size: 10px; color: #565f89; }
   .rpfoot { display: flex; justify-content: flex-end; }
   .rpfoot button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
+
+  /* Back button: only on phone width (the two panes become one — see the media query). */
+  .back { display: none; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d;
+    border-radius: 6px; font-size: 18px; line-height: 1; padding: 2px 11px; cursor: pointer; flex-shrink: 0; }
+
+  /* Phone width: the desktop two-pane (list | chat) becomes a single pane — the list, OR the
+     selected thread's detail+chat (with a ‹ back button). This removes the horizontal overflow
+     that made the whole page scroll and pushed modals off-screen. */
+  @media (max-width: 720px) {
+    .screen { grid-template-columns: 1fr; }
+    main { display: none; }
+    .screen.detail aside { display: none; }
+    .screen.detail main { display: flex; }
+    .back { display: inline-flex; align-items: center; }
+    header { padding: 10px 12px; }
+    .title { flex: 1; }
+    .actions { gap: 6px; }
+    .actions > button, .seg button { padding: 5px 9px; }
+  }
 </style>
