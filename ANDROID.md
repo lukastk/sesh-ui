@@ -1,9 +1,26 @@
-# sesh-ui on Android (Phase 3) — feasibility, design, and what's left
+# sesh-ui on Android (Phase 3) — design + status
 
-**Status: scaffolded + blocked on the build environment.** The same Svelte build runs; the only new
-surface is a native transport. mymain (where the overnight run happened) has **no JDK, no Android SDK,
-no gradle**, and no phone on `adb`, so the native project can't be generated or built here. Everything
-that does NOT need the SDK is in place; the rest is documented below with exact commands.
+**Status: APK builds with the full native transport; on-phone verification pending wifi pairing.**
+Built on **macbook** (JDK 17 Temurin + Android SDK android-34/build-tools 34, set via `ANDROID_HOME`;
+Gradle 8.2.1 wrapper). The same Svelte build runs unchanged; the only new surface is the native
+transport (the `android/` Capacitor project + the `SeshNative` Kotlin plugin). `./gradlew assembleDebug`
+produces `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+**Hub daemon: mymain:7878** (Tailscale 100.106.17.33), rebuilt from origin/main `5fd5157` — serves the
+`?token=` WS auth + `/v1/peers` (schema 22). Fallback: macstudio:7878 (100.125.115.38, still on the
+older binary — HTTP works, streaming would need its redeploy). Token: `~/.sesh/api-token` on macbook.
+Phone: android-main (Pixel 9, 100.67.70.114). **Set the endpoint + token on-device in Settings** (the
+token is entered at runtime → Keystore; it is NEVER baked into the committed app).
+
+## Build/run commands (macbook)
+
+```bash
+source /tmp/android-env.sh          # JAVA_HOME=temurin-17, ANDROID_HOME=~/Library/Android/sdk, PATH
+npm run build && npx cap sync android
+cd android && ./gradlew assembleDebug
+# install + drive on android-main (after wifi pairing — see the android-control skill):
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
 ## The design (decided)
 

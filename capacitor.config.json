@@ -1,8 +1,0 @@
-{
-  "appId": "com.jackfruiting.seshui",
-  "appName": "sesh-ui",
-  "webDir": "dist",
-  "server": {
-    "androidScheme": "https"
-  }
-}

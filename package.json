@@ -15,23 +15,41 @@
     "electron:build": "vite build && electron-builder"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "svelte": "^5.0.0",
+    "typescript": "^6.0.3",
     "vite": "^6.0.0"
   },
   "build": {
     "appId": "work.jackfruiting.seshui",
     "productName": "sesh-ui",
-    "files": ["dist/**", "electron/**", "package.json"],
-    "directories": { "output": "dist-electron" },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist-electron"
+    },
     "publish": null,
-    "linux": { "target": "AppImage", "category": "Development" },
-    "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
-    "win": { "target": "nsis" }
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis"
+    }
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "ws": "^8.21.0"

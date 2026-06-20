@@ -135,22 +135,33 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
       reach local panes, duplicate server-side detach-safety, and add a per-Electron-version native
       module, for a case where an unreachable daemon already breaks the rest of the app. Rationale in README.
 
-## Phase 3 — Android  · **scaffolded, blocked on build env**
+## Phase 3 — Android  · **APK builds with native transport; on-phone verify pending pairing**
 
-See **`ANDROID.md`** for the full design + remaining steps. mymain has no JDK/Android SDK/gradle/phone,
-so the native project can't be generated/built there — but everything that doesn't need the SDK is done.
+Built on **macbook** (the SDK-equipped machine; mymain had no JDK/SDK). See **`ANDROID.md`** for the
+full design. Toolchain installed (JDK 17 Temurin, Android SDK android-34 + build-tools 34, Gradle 8.2.1
+wrapper). The **hub daemon is mymain:7878** (rebuilt from origin/main `5fd5157` — serves `?token=` WS +
+`/v1/peers`, schema 22, verified live over Tailscale). Phone = android-main (Pixel 9, 100.67.70.114).
 
 - [x] **Seam ready**: `seshClient` detects a native `window.SeshNative` bridge (`transport: 'android'`)
       and routes get/post/wsURL/peerInfo/getConfig/setConfig through it, mirroring the Electron
       `window.sesh` contextBridge 1:1 — so NO renderer changes are needed when the native side lands.
-- [x] **`capacitor.config.json`** (wraps the existing `dist/` build).
-- [ ] **Native bridge plugin** (Kotlin): native HTTP to a remote hub daemon over tailscale (NOT WebView
-      fetch — CORS); bearer token in the Android Keystore (never the WebView); a loopback WS proxy for
-      rpc/terminal; primary + fallback endpoint. Contract documented in ANDROID.md.
-- [ ] `npx cap add android` + toolchain (JDK 17, Android SDK, gradle) on an SDK-equipped machine; run on
-      the user's phone (host as android-main over adb / the android-control skill).
-- [ ] Offline: last-snapshot cache (mesh/grid JSON) rendered with a loud staleness banner; writes require
-      connectivity and fail loudly.
+- [x] **sesh `?token=` WS auth** (sesh `e00bd2a`, in origin/main): the two WS routes accept the bearer
+      token via `?token=` (a WebView WS can't set the Authorization header). Scoped to rpc/terminal,
+      constant-time, conformance-tested, deployed to the mymain hub.
+- [x] **Capacitor shell**: `capacitor.config.ts` (appId `work.jackfruiting.seshui`, webDir `dist`),
+      `@capacitor/{core,cli,android}@6`, `npx cap add android` → `android/` gradle project. `npm run
+      build` → `cap sync` → **`./gradlew assembleDebug` builds `app-debug.apk` (4.5M)**.
+- [x] **Native bridge plugin** (Kotlin, `android/app/.../Sesh*.kt`): `window.SeshNative` 1:1 with the
+      Electron contract. `SeshHttp` (OkHttp, native HTTP + Bearer header — NOT WebView fetch), `SeshWsBridge`
+      (loopback Java-WebSocket server ⇄ OkHttp upstream, token injected as `?token=` upstream), `SeshStore`
+      (token encrypted via an AndroidKeyStore AES-GCM key — never the WebView), `SeshNativePlugin`
+      (get/post/getWsBase/peerInfo/getConfig/setConfig). Primary + fallback endpoint. `public/sesh-native-bridge.js`
+      injects `window.SeshNative` before the bundle. **Compiles + APK builds.**
+- [ ] **Pair phone over wifi** (needs Lukas: Wireless Debugging + pairing code) → `adb install` →
+      drive + screenshot. MVP check: real all-machines grid + tickets + machines + headless chat.
+- [ ] **Streaming on-phone** (pi RPC bubbles + xterm terminal over the `?token=` WS) — verify on android-main.
+- [ ] **Mobile layout** (responsive at phone width) + offline last-snapshot cache with a loud staleness
+      banner (writes require connectivity, fail loudly).
 
 ## Backlog / sesh-side asks (these are `sesh` changes, raise them — don't hack around in the client)
 

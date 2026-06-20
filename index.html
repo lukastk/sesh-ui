@@ -7,6 +7,9 @@
 </head>
 <body>
   <div id="app"></div>
+  <!-- Android (Capacitor) native bridge: sets window.SeshNative before the app bundle. No-op on
+       web/dev and Electron. Classic (non-module) script so it runs before the deferred module. -->
+  <script src="./sesh-native-bridge.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
