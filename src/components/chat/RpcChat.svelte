@@ -49,6 +49,8 @@
   let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
   let draft = $state('')
   let state = $state('connecting…')
+  let currentModel = $state(null) // live model from state.config.model (Phase 2 reflects set_model)
+  let modelDraft = $state('')     // the live-switch input
   let streaming = $state(false) // a UI turn is in flight (send → agent_end): freezes the history poll
   let atBottom = $state(true)   // is the log scrolled to the bottom? (drives auto-follow + jump button)
   let ws = null
@@ -88,7 +90,7 @@
     ws.onmessage = async (ev) => {
       let m
       try { m = JSON.parse(ev.data) } catch { return }
-      if (m.ok && m.state) { state = m.state.idle ? `idle · ${m.state.config?.model ?? 'pi'}` : 'busy'; return }
+      if (m.ok && m.state) { if (m.state.config?.model) currentModel = m.state.config.model; state = m.state.idle ? 'idle' : 'busy'; return }
       if (m.error) { live = [...live, { role: 'tool', text: '⚠ ' + m.error }]; return }
       if (m.event === 'text_delta') {
         if (streamIdx === null) { live = [...live, { role: 'assistant', text: '' }]; streamIdx = live.length - 1 }
@@ -135,6 +137,15 @@
   function onkey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
+  // Live model switch (Phase 2): send a {set_model} control frame over the existing RPC socket; pi
+  // switches the conversation's model mid-session and reflects it in state.config.model (no restart).
+  function setModel() {
+    const m = modelDraft.trim()
+    if (!m || !ws || ws.readyState !== 1) return
+    ws.send(JSON.stringify({ set_model: m }))
+    currentModel = m   // optimistic; the next state frame confirms it
+    modelDraft = ''
+  }
 
   // (Re)bind per thread. The parent re-polls the grid (reassigning the selected row), so guard
   // against re-runs for the SAME id that would wipe state and leak sockets/timers.
@@ -142,7 +153,7 @@
     const id = threadId
     if (id === activeFor) return
     activeFor = id
-    history = []; live = []; streamIdx = null; streaming = false; state = 'connecting…'; atBottom = true
+    history = []; live = []; streamIdx = null; streaming = false; state = 'connecting…'; atBottom = true; currentModel = null; modelDraft = ''
     try { ws?.close() } catch {}
     clearInterval(pollTimer)
     loadHistory()                 // show persisted history immediately — never blank on switch
@@ -155,7 +166,14 @@
 </script>
 
 <div class="chat">
-  <div class="ribbon">⚡ pi RPC · transcript-backed · {state}</div>
+  <div class="ribbon">
+    <span class="rb-l">⚡ pi RPC · {state}</span>
+    <span class="rb-spacer"></span>
+    <span class="rb-model">model: <b>{currentModel ?? 'default'}</b></span>
+    <input class="rb-input" bind:value={modelDraft} placeholder="switch model…" autocomplete="off"
+      onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setModel() } }} />
+    <button class="rb-set" onclick={setModel} disabled={!modelDraft.trim()} title="switch this pi conversation's model live">Set</button>
+  </div>
   <div class="log" bind:this={scroller} onscroll={onScroll}>
     {#each bubbles as m, i (m.key)}
       <div class="bubble {m.role}">
@@ -187,8 +205,15 @@
 
 <style>
   .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
-  .ribbon { padding: 5px 14px; font-size: 11px; color: #e0af68; background: #16161e;
-    border-bottom: 1px solid #1f2030; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .ribbon { display: flex; align-items: center; gap: 8px; padding: 5px 12px; font-size: 11px; color: #e0af68;
+    background: #16161e; border-bottom: 1px solid #1f2030; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .ribbon .rb-spacer { flex: 1; }
+  .ribbon .rb-model { color: #9aa5ce; } .ribbon .rb-model b { color: #7dcfff; }
+  .ribbon .rb-input { width: 130px; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d;
+    border-radius: 5px; padding: 2px 7px; font-size: 11px; font-family: inherit; }
+  .ribbon .rb-set { background: #2a2b3d; color: #c0caf5; border: 0; border-radius: 5px; padding: 2px 9px;
+    font-size: 11px; cursor: pointer; }
+  .ribbon .rb-set:disabled { opacity: 0.4; cursor: default; }
   /* own our overflow: a wheel at the top/bottom edge must NOT bubble out to the page/sidebar. */
   .log { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 14px;
     display: flex; flex-direction: column; gap: 9px; }

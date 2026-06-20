@@ -132,7 +132,8 @@ export const api = {
   // `machine` (optional) dials the thread's OWNING daemon for a cross-machine thread (Electron).
   transcript: (id, tail = 200, machine) => sesh.get('/threads/transcript' + qs({ id, tail }), machine),
   send: (id, text, machine) => sesh.post('/threads/send', { id, text }, machine),
-  sendHeadless: (id, text, machine) => sesh.post('/threads/send-headless', { id, text }, machine),
+  // `model` (optional) overrides the thread's pinned model for THIS headless turn only (pass-through).
+  sendHeadless: (id, text, machine, model) => sesh.post('/threads/send-headless', { id, text, model: model || undefined }, machine),
   headlessReply: (id, machine) => sesh.get('/threads/headless-reply' + qs({ id }), machine),
   capture: (id, lines = 0, machine) => sesh.get('/threads/capture' + qs({ id, lines }), machine),
 

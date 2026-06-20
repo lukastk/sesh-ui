@@ -7,6 +7,7 @@
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
   import { uploadBlob } from '../../lib/blobs.js'
+  import { modelSuggestions } from '../../lib/models.js'
   import Markdown from '../Markdown.svelte'
 
   // headful: this thread has a LIVE pane (claude/codex viewed in transcript mode) — the composer
@@ -21,6 +22,7 @@
   let atBottom = $state(true)
   let scroller
   let loadedFor = null
+  let turnModel = $state('')      // optional per-turn model override (headless only; pass-through)
   let attachments = $state([])    // {name, token} blobs referenced in the draft
   let uploading = $state(false)
   let fileInput
@@ -88,7 +90,7 @@
         await api.send(threadId, text, machine)
         await load()
       } else {
-        await api.sendHeadless(threadId, text, machine)
+        await api.sendHeadless(threadId, text, machine, turnModel.trim() || undefined)
         // Poll until the turn completes, then reload the durable transcript for the full turn.
         for (let i = 0; i < 180; i++) {
           const r = await api.headlessReply(threadId, machine)
@@ -146,6 +148,15 @@
         {/each}
       </div>
     {/if}
+    {#if !headful}
+      <div class="modelrow">
+        <span class="ml-label">model</span>
+        <input bind:value={turnModel} list="hl-model-suggestions" placeholder="(thread default · this turn only)" autocomplete="off" />
+        <datalist id="hl-model-suggestions">
+          {#each modelSuggestions(agentKind) as m}<option value={m}></option>{/each}
+        </datalist>
+      </div>
+    {/if}
     <div class="composer">
       <textarea bind:value={draft} placeholder={headful ? 'Send into the live pane… (⌘/Ctrl+Enter) · drop/paste a file' : 'Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach'} onkeydown={onkey} onpaste={onPaste}></textarea>
       <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
@@ -172,6 +183,10 @@
   .thinking { opacity: 0.5; font-style: italic; font-size: 12px; margin-bottom: 6px;
     border-left: 2px solid #565f89; padding-left: 6px; }
   .composer-wrap { border-top: 1px solid #1f2030; background: #16161e; flex-shrink: 0; }
+  .modelrow { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0; }
+  .modelrow .ml-label { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em; }
+  .modelrow input { flex: 1; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px;
+    padding: 4px 9px; font-size: 12px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
   .chip { display: inline-flex; align-items: center; gap: 5px; background: #1a2733; color: #7dcfff;
     border: 1px solid #1e3a4a; border-radius: 6px; padding: 3px 7px; font-size: 11px; }

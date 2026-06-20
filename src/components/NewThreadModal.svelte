@@ -2,6 +2,7 @@
   // New-thread modal → POST /v1/threads. Agent / name / cwd (fs picker) / headless / mode,
   // plus an optional initial message for a headed spawn (sent once the agent is READY).
   import { api, sesh } from '../lib/seshClient.js'
+  import { modelSuggestions } from '../lib/models.js'
   import FsPicker from './FsPicker.svelte'
 
   // forkFrom: branch an existing thread's conversation (its full prefix, message_id 0). The new
@@ -14,6 +15,7 @@
   let cwd = $state(isFork ? forkCwd : '~')
   let headless = $state(false)
   let mode = $state('yolo')
+  let model = $state('')   // free-text pass-through; '' = the agent's default
   let msg = $state('')
   let busy = $state(false)
   let err = $state(null)
@@ -38,6 +40,7 @@
     busy = true; err = null
     try {
       const req = { agent, name: name.trim(), cwd: cwd.trim() || '~', headless, mode }
+      if (model.trim()) req.model = model.trim()  // pinned model (pass-through; '' = agent default)
       if (parent) req.parent = parent
       if (isFork) { req.fork_from = forkFrom; req.message_id = 0 } // branch the whole conversation
       if (!headless && msg.trim()) req.msg = msg.trim()
@@ -89,6 +92,13 @@
       </label>
     </div>
 
+    <label>Model <span class="hint">(optional · any model the {agent} accepts)</span>
+      <input bind:value={model} list="model-suggestions" placeholder="(agent default)" autocomplete="off" />
+      <datalist id="model-suggestions">
+        {#each modelSuggestions(agent) as m}<option value={m}></option>{/each}
+      </datalist>
+    </label>
+
     {#if !headless}
       <label>Initial message <input bind:value={msg} placeholder="(optional — sent once the agent is ready)" /></label>
     {/if}
@@ -114,6 +124,7 @@
   h3 { margin: 0 0 2px; font-size: 16px; }
   h3 .par { font-size: 11px; color: #7aa2f7; font-weight: 400; }
   label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9aa5ce; }
+  .hint { color: #565f89; font-weight: 400; }
   input, select { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
     padding: 8px; font-size: 13px; font-family: inherit; }
   .cwd { display: flex; gap: 8px; }
