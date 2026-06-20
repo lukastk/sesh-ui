@@ -5,6 +5,16 @@ roadmap + status. Update the status markers as you go. Read `CLAUDE.md` first fo
 
 Status legend: `todo` · `in progress` · `done`.
 
+> **READY FOR LUKAS (2026-06-20).** Desktop app is feature-complete against the mapped P1 set and
+> stress-tested end-to-end (see `STRESSTEST.md`): the 4 reported UI bugs are fixed; every chat surface,
+> lifecycle verb, tickets/automation/machines screen, blobs, fork, tags, reparent, notify, and peer
+> add/remove are verified live. All synced to `lukas@macbook:~/sesh-ui` (dist rebuilt). **Two things need
+> Lukas:** (1) confirm **cross-machine chat** in the Electron app at the Mac (the transport is proven —
+> the WS bridge routed a live macstudio terminal — but the Playwright MCP can't drive an Electron CDP
+> port, so the GUI step is his); (2) review the **sesh `/v1/peers` change** (commit `4eb37f3`, schema 22)
+> and **redeploy the fleet** — the overnight run only put it on the isolated dev daemon. Remaining work is
+> **Android** (blocked on his SDK+device; seam+config scaffolded — see `ANDROID.md`).
+
 ---
 
 ## Phase 0 — scaffold & transport seam (the spine)  · **done**

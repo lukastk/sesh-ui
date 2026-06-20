@@ -6,6 +6,40 @@ in headful + headless, plus idle/dead/never-run states.
 
 Legend: ✅ pass · 🔧 fixed-bug (commit) · ⚠️ known-limitation
 
+## FINAL pass/fix table (every surface, click-driven; drag never via Playwright)
+
+| Surface / feature | Status | Notes |
+|---|---|---|
+| Threads grid + parent/child tree | ✅ | glyphs, filter, archived toggle, all-machines |
+| Tree fold (collapse/expand) | ✅🔧 | persists across poll + reload (localStorage) |
+| pi RPC chat (UI→agent stream) | ✅ | one user+one assistant, no dup |
+| pi RPC ← TUI-typed turn | ✅🔧 | transcript-backed; appears via poll |
+| RPC/Transcript history on thread-switch | ✅ | reloads, never blanks |
+| Bubble duplication | ✅🔧 | freeze poll during turn + stable keys |
+| Auto-follow + "↓ latest" jump | ✅🔧 | sticks at bottom; jump when scrolled up |
+| Chat log internal scroll + containment | ✅🔧 | `main` min-height:0 + overscroll-behavior |
+| claude/codex Terminal (xterm) | ✅🔧 | TERM=xterm-256color (sesh 047467e) |
+| Headless Transcript (send + reply) | ✅ | claude/codex/pi |
+| Blob attach (📎/drag/paste → @blob) | ✅ | upload→token→send→daemon expands to path |
+| New-thread modal + fs picker | ✅ | every agent, headed/headless |
+| Fork | ✅ | carries source conversation |
+| Rename / Archive / Delete (+confirm) | ✅ | in-app dialogs |
+| Stop / Resume / Headful | ✅ | honest loud toast on a no-session revive |
+| Notify bell | ✅ | 🔔↔🔕 |
+| Tags (chips add/remove) | ✅ | |
+| Reparent | ✅ | click "Set parent…" picker (drag also wired, untested) |
+| Tickets: create/status/bind/send/unbind/delete | ✅ | |
+| Tickets: prompt edit | ✅🔧 | poll no longer clobbers edits |
+| Tickets: find-by-id / move | ✅ | find opens by id; move picker (real move needs multi-machine mesh) |
+| Machines / mesh view | ✅ | reachability + freshness + threads |
+| Peers: add / remove | ✅ | new sesh /v1/peers API (schema 22); pre-22 daemon → graceful note |
+| Automation: hooks list/test/enable-disable | ✅ | synchronous test output shown |
+| Automation: subscriptions add/remove | ✅ | two-thread picker |
+| Daemon unreachable → 1 banner, no flood | ✅🔧 | + graceful auto-reconnect |
+| Cross-machine chat transport | ✅ | bridge routed a live macstudio terminal (headless); **Electron GUI confirm → Lukas** |
+| Cross-machine chat GUI | ⚠️ | needs the Electron transport at the Mac (MCP can't drive Electron CDP) |
+| Android | ⚠️ | seam+config scaffolded; build blocked (no SDK/JDK/device) |
+
 ## Bugs from Lukas
 - ✅🔧 BUG 1 — headful claude/codex Terminal "terminal does not support clear" → sesh daemon forces
   `TERM=xterm-256color` in the UI-terminal pty (sesh `047467e`, deployed to macbook). UI verified:
