@@ -3,12 +3,24 @@
   // and the token. The token is WRITE-ONLY — getConfig never returns its value, only whether one
   // is set; we send a new token only if the user types one. In web/dev the endpoint is the fixed
   // Vite proxy (read-only). On save, the Electron main process rebuilds its transport and reloads.
-  import { sesh } from '../lib/seshClient.js'
-  import { pushError } from '../lib/toasts.svelte.js'
+  import { sesh, api } from '../lib/seshClient.js'
+  import { pushError, pushInfo } from '../lib/toasts.svelte.js'
 
   let { onclose } = $props()
 
   let cfg = $state(null)        // { mode, target, hasToken, editable }
+  // Per-daemon UI config (served from <SESH_HOME>/ui_config.toml on the connected daemon, schema ≥24).
+  let uiCfg = $state(null)      // { collapse_parents, … }
+  let uiUnsupported = $state(false)
+  $effect(() => {
+    api.uiConfigGet()
+      .then((r) => { uiCfg = r.ui_config || {} })
+      .catch((e) => { if (/:\s*404/.test(String(e))) uiUnsupported = true; else pushError(e) })
+  })
+  async function setCollapseParents(v) {
+    try { const r = await api.uiConfigSet({ collapse_parents: v }); uiCfg = r.ui_config; pushInfo('UI config saved') }
+    catch (e) { pushError(`ui-config: ${e.message ?? e}`); uiCfg = { ...uiCfg } } // revert the checkbox to the saved value
+  }
   let mode = $state('local')
   let socketPath = $state('')
   let host = $state('')
@@ -79,6 +91,20 @@
     {:else}
       <div class="readonly">loading…</div>
     {/if}
+
+    <hr class="sep" />
+    <h3>UI <span class="sub">· {cfg?.target || 'this daemon'}</span></h3>
+    {#if uiUnsupported}
+      <p class="note">UI config needs a daemon on schema ≥24. This daemon predates it.</p>
+    {:else if uiCfg}
+      <label class="check">
+        <input type="checkbox" checked={uiCfg.collapse_parents} onchange={(e) => setCollapseParents(e.currentTarget.checked)} />
+        Collapse parent threads by default
+      </label>
+      <p class="note">Per-daemon UI preferences, stored on the connected daemon (<code>~/.sesh/ui_config.toml</code>). Sets the initial fold state of parent rows; you can still expand/collapse individual parents.</p>
+    {:else}
+      <p class="note">loading…</p>
+    {/if}
   </div>
 </div>
 
@@ -86,7 +112,10 @@
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 90; }
   .modal { background: #16161e; border: 1px solid #2a2b3d; border-radius: 12px; padding: 20px 22px; width: 420px; max-width: 92vw; display: flex; flex-direction: column; gap: 12px; }
   h3 { margin: 0 0 2px; font-size: 16px; }
+  h3 .sub { font-size: 11px; color: #565f89; font-weight: 400; }
+  .sep { width: 100%; border: 0; border-top: 1px solid #1f2030; margin: 4px 0; }
   label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9aa5ce; }
+  .check { flex-direction: row; align-items: center; gap: 8px; color: #c0caf5; font-size: 13px; }
   input { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 8px; font-size: 13px; font-family: inherit; }
   .seg { display: flex; border: 1px solid #2a2b3d; border-radius: 7px; overflow: hidden; }
   .seg button { flex: 1; border: 0; background: #1a1b26; color: #9aa5ce; padding: 7px; font-size: 13px; cursor: pointer; }

@@ -107,6 +107,11 @@ export const api = {
   health: () => sesh.get('/health'),
   mesh: () => sesh.get('/mesh'),
 
+  // ── ui-config (per-daemon UI prefs; <SESH_HOME>/ui_config.toml, daemon schema ≥24) ─────────
+  // GET → {schema, ui_config:{collapse_parents,…}} (defaults applied); POST replaces + returns it.
+  uiConfigGet: () => sesh.get('/ui-config'),
+  uiConfigSet: (cfg) => sesh.post('/ui-config', cfg),
+
   // ── peers (mesh membership; /v1/peers CRUD, daemon schema ≥22) ─────────────
   peers: () => sesh.get('/peers'),
   peerAdd: (peer) => sesh.post('/peers', peer),

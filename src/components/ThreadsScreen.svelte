@@ -33,18 +33,23 @@
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
   let deleteTarget = $state(null)    // thread pending delete confirmation
 
-  // Collapsed parent ids (tree fold, like the TUI). Persisted in localStorage so the fold survives
-  // reloads; it's plain component state so the 2.5s grid poll never resets it.
-  let collapsed = $state(loadCollapsed())
-  function loadCollapsed() {
-    try { return new Set(JSON.parse(localStorage.getItem('seshui.collapsed') || '[]')) } catch { return new Set() }
-  }
+  // Tree fold (like the TUI). The DEFAULT collapsed state for parents comes from the connected
+  // daemon's ui_config.collapse_parents (fetched on load); a user can expand/collapse individual
+  // parents within the session via `overrides` (ids whose state differs from the default).
+  let collapseDefault = $state(true)        // ui_config.collapse_parents (default true)
+  let overrides = $state(new Set())         // parent ids toggled away from the default (session-only)
+  const isCollapsed = (id) => collapseDefault !== overrides.has(id) // default XOR overridden
   function toggleCollapse(id) {
-    const n = new Set(collapsed)
+    const n = new Set(overrides)
     n.has(id) ? n.delete(id) : n.add(id)
-    collapsed = n
-    try { localStorage.setItem('seshui.collapsed', JSON.stringify([...n])) } catch {}
+    overrides = n
   }
+  // Fetch the per-daemon UI config once on load → set the parent-collapse default.
+  $effect(() => {
+    api.uiConfigGet()
+      .then((r) => { collapseDefault = r.ui_config?.collapse_parents ?? true; overrides = new Set() })
+      .catch(() => {}) // pre-24 daemon → keep the default (collapsed)
+  })
 
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
@@ -86,9 +91,10 @@
     const out = []
     const walk = (r, depth) => {
       const kids = children.get(r.id) || []
-      out.push({ row: r, depth, hasChildren: kids.length > 0, collapsed: collapsed.has(r.id) })
+      const fold = kids.length > 0 && isCollapsed(r.id)
+      out.push({ row: r, depth, hasChildren: kids.length > 0, collapsed: fold })
       // Fold: skip a collapsed parent's subtree entirely (its rows leave the flattened list).
-      if (kids.length && !collapsed.has(r.id)) kids.sort(byName).forEach((c) => walk(c, depth + 1))
+      if (kids.length && !fold) kids.sort(byName).forEach((c) => walk(c, depth + 1))
     }
     roots.sort(byName).forEach((r) => walk(r, 0))
     return out
