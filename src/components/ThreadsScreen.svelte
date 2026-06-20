@@ -7,6 +7,7 @@
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll, conn } from '../lib/connection.svelte.js'
+  import { copyText } from '../lib/clipboard.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import RpcChat from './chat/RpcChat.svelte'
   import Terminal from './chat/Terminal.svelte'
@@ -102,6 +103,8 @@
   })
 
   function select(r) { selectedId = r.id; mode = 'auto' }
+
+  function copyId(id) { copyText(id) ? pushInfo('Copied full id') : pushError('copy failed') }
 
   // Right-click (desktop) / long-press (Android, separate branch) → the reusable ContextMenu with
   // this row's existing actions. openRowMenu is shared: desktop passes the contextmenu event; the
@@ -244,6 +247,7 @@
         <div class="title">
           <span class="g {selected.busy === 'busy' ? 'busy' : ''}">{glyph(selected)}</span>
           <span class="name">{selected.name || '(nameless)'}</span>
+          <button class="copyid" onclick={() => copyId(selected.id)} title={`copy full id: ${selected.id}`}>⧉ {shortId(selected.id)}</button>
           <span class="sub">{selected.agent_kind} · {stateLabel(selected)} · {selected.cwd_rel || selected.cwd}</span>
         </div>
         <div class="actions">
@@ -406,6 +410,9 @@
     padding: 5px 12px; cursor: pointer; font-size: 12px; }
   .actions > button:hover { background: #232433; }
   .actions .danger { color: #ffb4c0; border-color: #5a2030; }
+  .copyid { background: #1a1b26; color: #7dcfff; border: 1px solid #2a2b3d; border-radius: 5px;
+    padding: 1px 7px; font-size: 10px; font-family: ui-monospace, monospace; cursor: pointer; flex-shrink: 0; }
+  .copyid:hover { background: #232433; }
   .tagbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px 16px;
     border-bottom: 1px solid #1f2030; background: #0c0d14; }
   .tagbar .tg-label { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em; }

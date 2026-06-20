@@ -6,6 +6,7 @@
   import { shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll } from '../lib/connection.svelte.js'
+  import { copyText } from '../lib/clipboard.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
@@ -69,6 +70,7 @@
     // Route to the ticket's owning daemon (a remote ticket 404s on the connected daemon otherwise).
     try { sel = (await api.ticketGet(entry.ticket.id, entry.machine)).ticket; selMachine = entry.machine } catch (e) { pushError(e) }
   }
+  function copyId(id) { copyText(id) ? pushInfo('Copied full id') : pushError('copy failed') }
   // Deep-link: resolve a ticket by id across the mesh and open it.
   async function doFind() {
     const id = findId.trim()
@@ -194,7 +196,8 @@
         <label>Prompt</label>
         <textarea bind:value={sel.prompt} onblur={savePrompt} placeholder="ticket prompt…"></textarea>
         <div class="d-meta">
-          id {shortId(sel.id)} · created {new Date(sel.created_at_unix * 1000).toLocaleString()}
+          id <button class="copyid" onclick={() => copyId(sel.id)} title={`copy full id: ${sel.id}`}>⧉ {shortId(sel.id)}</button>
+          · created {new Date(sel.created_at_unix * 1000).toLocaleString()}
           {#if selMachine}· on {selMachine}{/if}
           {#if sel.thread_id}· bound {shortId(sel.thread_id)}{:else}· unbound{/if}
         </div>
@@ -299,6 +302,9 @@
   label { font-size: 11px; color: #565f89; }
   textarea { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 8px; padding: 10px; min-height: 130px; font-family: ui-monospace, monospace; font-size: 13px; resize: vertical; }
   .d-meta { font-size: 11px; color: #565f89; }
+  .d-meta .copyid { background: #1a1b26; color: #7dcfff; border: 1px solid #2a2b3d; border-radius: 5px;
+    padding: 0 6px; font-size: 10px; font-family: ui-monospace, monospace; cursor: pointer; }
+  .d-meta .copyid:hover { background: #232433; }
   .d-actions { display: flex; gap: 8px; align-items: center; }
   .d-actions .spacer { flex: 1; }
   .d-actions button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
