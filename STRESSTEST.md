@@ -67,4 +67,22 @@ Legend: ✅ pass · 🔧 fixed-bug (commit) · ⚠️ known-limitation
 - ✅ Thread fork: "Fork" → modal pre-filled from source → new thread carries the source's transcript.
 - ✅ Blob attachments: 📎 upload → chip + @blob token; daemon stored exact bytes + token expands to a path.
 - ✅ Android: seam branch + capacitor config build clean (dead-code off-device); env wall documented.
-- ⏳ Continuous regression pass (round 3 features + round 1/2 surfaces) — ongoing.
+- ✅ Continuous regression pass: local RPC chat still streams after the machine-param + transport
+  refactors (one user + one assistant, no dup); all four nav tabs render; Tickets/Machines intact.
+
+## Round 4 (overnight, click-only — Playwright drag is banned, it hangs)
+- ✅ Tags: add chip via "+ add tag" (Enter) + remove via × — round-trips.
+- ✅ Reparent: click-based "Set parent…" picker reparents a thread under the chosen parent (tree
+  restructures, fold chevron appears). Drag-drop affordance also in the UI but NOT tested via
+  browser_drag (it hangs the turn — see memory). "(make a root thread)" option present.
+- ✅ Notify bell toggles 🔔↔🔕.
+- ✅ Auto-follow + jump button: scrolled up → "↓ latest" appears; click → returns to bottom + hides.
+- 🔧 Layout bug found + fixed: `main` lacked `min-height:0`, so a long transcript overflowed the PAGE
+  instead of the log scrolling internally (defeating auto-follow/overscroll). Fixed + verified: log now
+  scrolls internally, page doesn't overflow.
+- ✅ Blob attach END-TO-END: 📎 upload → @blob token → send-headless → the daemon expands the token to
+  a real path in the delivered message. (A sandboxed headless claude then can't read outside its cwd —
+  a sesh sandbox policy, not a UI issue; a yolo/headful agent reads it.)
+- ⚠️ Hooks enable/disable + Test: not exercised live (the dev daemon has no hooks configured); the
+  list/mute/test code paths are straightforward and the empty-state renders.
+- ⚠️ Peer add/remove: blocked — no `/v1/peers` daemon API (sesh-side ask, logged in PLAN backlog).
