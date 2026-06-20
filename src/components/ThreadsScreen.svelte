@@ -106,6 +106,30 @@
 
   function copyId(id) { copyText(id) ? pushInfo('Copied full id') : pushError('copy failed') }
 
+  // Resizable sidebar (desktop). A pointer-drag handle (NOT HTML5 drag) updates the grid column
+  // width, clamped 200–600, persisted to localStorage. The phone layout (≤720px) collapses the
+  // sidebar, so the handle is hidden there.
+  let sidebarWidth = $state(loadSidebarW())
+  let resizing = $state(false)
+  function loadSidebarW() {
+    const v = Number(localStorage.getItem('seshui.sidebarWidth'))
+    return v >= 200 && v <= 600 ? v : 320
+  }
+  function startResize(e) {
+    e.preventDefault()
+    resizing = true
+    const scale = Number(getComputedStyle(document.documentElement).getPropertyValue('--font-scale')) || 1
+    const onMove = (ev) => { sidebarWidth = Math.min(600, Math.max(200, Math.round(ev.clientX / scale))) }
+    const onUp = () => {
+      resizing = false
+      try { localStorage.setItem('seshui.sidebarWidth', String(sidebarWidth)) } catch {}
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   // Right-click (desktop) / long-press (Android, separate branch) → the reusable ContextMenu with
   // this row's existing actions. openRowMenu is shared: desktop passes the contextmenu event; the
   // long-press util passes { x, y }.
@@ -192,7 +216,7 @@
   )
 </script>
 
-<div class="screen" class:detail={!!selected}>
+<div class="screen" class:detail={!!selected} class:resizing style="--sidebar-w:{sidebarWidth}px">
   <aside>
     <div class="head">
       <span>Threads</span>
@@ -237,6 +261,10 @@
       {#if filtered.length === 0}<div class="empty">{filter ? 'no matches' : 'no threads — click “+ New”.'}</div>{/if}
     </div>
   </aside>
+
+  <div class="resizer" class:active={resizing} style="left:calc(var(--sidebar-w) - 3px)"
+    onpointerdown={startResize} role="separator" aria-label="resize sidebar"
+    title="drag to resize · double-click to reset" ondblclick={() => { sidebarWidth = 320; try { localStorage.setItem('seshui.sidebarWidth', '320') } catch {} }}></div>
 
   <main>
     {#if !selected}
@@ -358,7 +386,11 @@
 </div>
 
 <style>
-  .screen { display: grid; grid-template-columns: 320px 1fr; height: 100%; min-height: 0; }
+  .screen { position: relative; display: grid; grid-template-columns: var(--sidebar-w, 320px) 1fr; height: 100%; min-height: 0; }
+  .screen.resizing { cursor: col-resize; user-select: none; }
+  .resizer { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 8; cursor: col-resize; }
+  .resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; }
+  .resizer:hover::after, .resizer.active::after { background: #7aa2f7; box-shadow: 0 0 5px #7aa2f788; }
   aside { background: #0e0f17; border-right: 1px solid #1f2030; display: flex; flex-direction: column; min-height: 0; }
   .head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px 8px; font-weight: 600; }
   .head .new { background: #7aa2f7; color: #11121a; border: 0; border-radius: 6px; padding: 4px 10px;
@@ -452,7 +484,8 @@
      selected thread's detail+chat (with a ‹ back button). This removes the horizontal overflow
      that made the whole page scroll and pushed modals off-screen. */
   @media (max-width: 720px) {
-    .screen { grid-template-columns: 1fr; }
+    .screen { grid-template-columns: 1fr; }     /* collapse: the sidebar-width var doesn't apply on phone */
+    .resizer { display: none; }                 /* no resize handle in the single-pane phone layout */
     main { display: none; }
     .screen.detail aside { display: none; }
     .screen.detail main { display: flex; }
