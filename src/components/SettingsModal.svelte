@@ -5,6 +5,7 @@
   // Vite proxy (read-only). On save, the Electron main process rebuilds its transport and reloads.
   import { sesh, api } from '../lib/seshClient.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
+  import { startTranscriptPrefetch } from '../lib/transcriptCache.js'
 
   let { onclose } = $props()
 
@@ -19,13 +20,28 @@
   })
   let newRoot = $state('')
   // POST is a full REPLACE (an absent key resets to default), so always send the WHOLE config —
-  // merge the patch over the current values so changing one setting never clobbers another.
+  // merge the patch over ALL current values so changing one setting never clobbers another (incl.
+  // cwd_labels and transcript_prefetch_secs, which would otherwise reset when toggling e.g. collapse).
   async function saveUiConfig(patch) {
-    const next = { collapse_parents: uiCfg.collapse_parents, cwd_roots: uiCfg.cwd_roots || [], ...patch }
-    try { const r = await api.uiConfigSet(next); uiCfg = r.ui_config; pushInfo('UI config saved') }
+    const next = {
+      collapse_parents: uiCfg.collapse_parents,
+      cwd_roots: uiCfg.cwd_roots || [],
+      cwd_labels: uiCfg.cwd_labels || [],
+      transcript_prefetch_secs: uiCfg.transcript_prefetch_secs ?? 10,
+      ...patch,
+    }
+    try {
+      const r = await api.uiConfigSet(next); uiCfg = r.ui_config; pushInfo('UI config saved')
+      startTranscriptPrefetch(uiCfg.transcript_prefetch_secs ?? 10)   // apply a changed interval live
+    }
     catch (e) { pushError(`ui-config: ${e.message ?? e}`); uiCfg = { ...uiCfg } } // revert the controls
   }
   const setCollapseParents = (v) => saveUiConfig({ collapse_parents: v })
+  // transcript_prefetch_secs: clamp to a non-negative int; '' / NaN → 0 (off).
+  function setPrefetchSecs(v) {
+    const n = Math.max(0, Math.floor(Number(v)))
+    saveUiConfig({ transcript_prefetch_secs: Number.isFinite(n) ? n : 0 })
+  }
   function addRoot() {
     const r = newRoot.trim()
     if (!r) return
@@ -131,6 +147,15 @@
         Collapse parent threads by default
       </label>
 
+      {#if uiCfg.transcript_prefetch_secs !== undefined}
+        <label class="prefetch">
+          Transcript prefetch interval (seconds, 0 = off)
+          <input type="number" min="0" step="1" value={uiCfg.transcript_prefetch_secs}
+            onchange={(e) => setPrefetchSecs(e.currentTarget.value)} />
+        </label>
+        <p class="note">The app silently prefetches every non-archived thread's transcript on this interval and caches it, so opening a thread's transcript is instant. 0 disables it.</p>
+      {/if}
+
       {#if uiCfg.cwd_roots !== undefined}
         <div class="roots">
           <span class="roots-label">New-thread folders (cwd_roots)</span>
@@ -180,6 +205,7 @@
   .sep { width: 100%; border: 0; border-top: 1px solid #1f2030; margin: 4px 0; }
   label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9aa5ce; }
   .check { flex-direction: row; align-items: center; gap: 8px; color: #c0caf5; font-size: 13px; }
+  .prefetch input { width: 90px; }
   .roots { display: flex; flex-direction: column; gap: 4px; }
   .roots-label { font-size: 11px; color: #565f89; }
   .root { display: flex; align-items: center; gap: 8px; background: #1a1b26; border: 1px solid #232433;

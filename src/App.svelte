@@ -6,6 +6,7 @@
   import { toasts, dismiss } from './lib/toasts.svelte.js'
   import { conn, noteOk, noteFail } from './lib/connection.svelte.js'
   import { cacheGet } from './lib/snapshot.svelte.js'
+  import { startTranscriptPrefetch, stopTranscriptPrefetch } from './lib/transcriptCache.js'
   import { fontScale, bumpScale, resetScale, setScale } from './lib/fontscale.svelte.js'
   import { pinch } from './lib/pinch.js'
   import { registerBack, runBack } from './lib/back.js'
@@ -39,6 +40,18 @@
     }
   }
   $effect(() => { pollStatus(); const t = setInterval(pollStatus, 4000); return () => clearInterval(t) })
+
+  // Background transcript prefetch: read the interval from the daemon's ui_config (schema ≥27,
+  // default 10s, 0=off) once on load and start the loop so opening any thread's transcript is
+  // instant from cache. An older daemon (no field) → undefined ?? 10 = the default; the transcript
+  // endpoint itself predates schema 27, so prefetch still works there.
+  $effect(() => {
+    let cancelled = false
+    api.uiConfigGet()
+      .then((r) => { if (!cancelled) startTranscriptPrefetch(r.ui_config?.transcript_prefetch_secs ?? 10) })
+      .catch(() => {})   // daemon unreachable on first load — pollStatus drives the retry/banner
+    return () => { cancelled = true; stopTranscriptPrefetch() }
+  })
 
   // Apply the app-wide UI scale (reactive): a CSS var consumed by `.app { zoom: var(--font-scale) }`.
   $effect(() => { document.documentElement.style.setProperty('--font-scale', String(fontScale.scale)) })

@@ -6,6 +6,7 @@
   import { tick } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
+  import { getCachedTranscript, putCachedTranscript } from '../../lib/transcriptCache.js'
   import { uploadBlob } from '../../lib/blobs.js'
   import { modelSuggestions } from '../../lib/models.js'
   import Markdown from '../Markdown.svelte'
@@ -18,6 +19,7 @@
   let msgs = $state([])       // {role, text, thinking?}
   let draft = $state('')
   let sending = $state(false)
+  let loading = $state(false) // the INITIAL transcript fetch is in flight (no cache to show yet)
   let loadErr = $state(null)
   let atBottom = $state(true)
   let scroller
@@ -55,13 +57,16 @@
     try {
       const t = await api.transcript(threadId, 300, machine)
       msgs = parseTranscript(t.lines || [], agentKind)
+      putCachedTranscript(threadId, msgs)
       loadErr = null
       await scrollDown()
     } catch (e) {
       // A thread that has never run a turn has no transcript yet — a LEGITIMATE empty state,
       // not a failure. Render it as empty; surface every other transcript error loudly.
-      if (/no transcript/i.test(String(e))) { msgs = []; loadErr = null }
+      if (/no transcript/i.test(String(e))) { msgs = []; loadErr = null; putCachedTranscript(threadId, []) }
       else loadErr = String(e)
+    } finally {
+      loading = false   // the initial fetch has resolved — "No transcript yet" is now truthful
     }
   }
   function onScroll() {
@@ -113,7 +118,12 @@
   $effect(() => {
     if (threadId === loadedFor) return
     loadedFor = threadId
-    msgs = []; atBottom = true
+    // Show the prefetched transcript INSTANTLY if we have it, then refresh in the background. Only
+    // when there's no cache do we enter the "Loading…" state for the initial fetch.
+    const cached = getCachedTranscript(threadId)
+    msgs = cached || []
+    loading = !cached
+    atBottom = true
     load()
   })
   // A headful pane's reply streams into the transcript over time — poll-reload while viewing it
@@ -135,7 +145,10 @@
       </div>
     {/each}
     {#if sending}<div class="bubble assistant pending">…thinking</div>{/if}
-    {#if msgs.length === 0 && !loadErr && !sending}<div class="empty">{headful ? 'No transcript yet — send a message into the live pane below.' : 'No transcript yet — send a headless turn below.'}</div>{/if}
+    {#if msgs.length === 0 && !loadErr && !sending}
+      {#if loading}<div class="empty">Loading…</div>
+      {:else}<div class="empty">{headful ? 'No transcript yet — send a message into the live pane below.' : 'No transcript yet — send a headless turn below.'}</div>{/if}
+    {/if}
   </div>
   {#if !atBottom}
     <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>

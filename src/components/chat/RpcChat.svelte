@@ -11,6 +11,7 @@
   import { onDestroy, tick } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { parseTranscript } from '../../lib/transcript.js'
+  import { getCachedTranscript, putCachedTranscript } from '../../lib/transcriptCache.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
   import Markdown from '../Markdown.svelte'
 
@@ -52,6 +53,7 @@
   let currentModel = $state(null) // live model from state.config.model (Phase 2 reflects set_model)
   let modelDraft = $state('')     // the live-switch input
   let streaming = $state(false) // a UI turn is in flight (send → agent_end): freezes the history poll
+  let loading = $state(false)   // the INITIAL history fetch is in flight (no cache to show yet)
   let atBottom = $state(true)   // is the log scrolled to the bottom? (drives auto-follow + jump button)
   let ws = null
   let scroller
@@ -74,11 +76,14 @@
       const t = await api.transcript(threadId, 300, machine)
       if (!force && streaming) return
       history = parseTranscript(t.lines || [], 'pi')
+      putCachedTranscript(threadId, history)
       await scrollDown()
     } catch (e) {
       // A never-run pi thread has no transcript yet — a legitimate empty state, not a failure.
-      if (/no transcript/i.test(String(e))) history = []
+      if (/no transcript/i.test(String(e))) { history = []; putCachedTranscript(threadId, []) }
       // else: keep the last-known history; the ribbon reflects the socket/connection state.
+    } finally {
+      loading = false   // the initial fetch resolved — the empty state is now truthful
     }
   }
 
@@ -153,7 +158,10 @@
     const id = threadId
     if (id === activeFor) return
     activeFor = id
-    history = []; live = []; streamIdx = null; streaming = false; state = 'connecting…'; atBottom = true; currentModel = null; modelDraft = ''
+    // Seed from the prefetch cache so the conversation paints instantly; else show "Loading…".
+    const cached = getCachedTranscript(id)
+    history = cached || []; live = []; streamIdx = null; streaming = false; loading = !cached
+    state = 'connecting…'; atBottom = true; currentModel = null; modelDraft = ''
     try { ws?.close() } catch {}
     clearInterval(pollTimer)
     loadHistory()                 // show persisted history immediately — never blank on switch
@@ -181,7 +189,10 @@
         <div class="text">{#if m.role === 'user'}{m.text}{:else}<Markdown text={m.text} />{/if}{#if m.role === 'assistant' && streaming && i === bubbles.length - 1}<span class="cursor"></span>{/if}</div>
       </div>
     {/each}
-    {#if bubbles.length === 0}<div class="empty">No turns yet — send a message (streams live), or type in the pi TUI.</div>{/if}
+    {#if bubbles.length === 0}
+      {#if loading}<div class="empty">Loading…</div>
+      {:else}<div class="empty">No turns yet — send a message (streams live), or type in the pi TUI.</div>{/if}
+    {/if}
   </div>
   {#if !atBottom}
     <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
