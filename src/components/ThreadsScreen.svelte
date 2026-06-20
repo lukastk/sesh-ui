@@ -14,6 +14,7 @@
   import NewThreadModal from './NewThreadModal.svelte'
   import PromptDialog from './PromptDialog.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
+  import ContextMenu from './ContextMenu.svelte'
 
   // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
   // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
@@ -101,6 +102,26 @@
   })
 
   function select(r) { selectedId = r.id; mode = 'auto' }
+
+  // Right-click (desktop) / long-press (Android, separate branch) → the reusable ContextMenu with
+  // this row's existing actions. openRowMenu is shared: desktop passes the contextmenu event; the
+  // long-press util passes { x, y }.
+  let ctxMenu = $state(null)   // { x, y, items } | null
+  function rowMenuItems(row) {
+    const items = []
+    if (row.head === 'headful') items.push({ label: 'Stop', onselect: () => act('stop', () => api.stop(row.id, row.machine)) })
+    else items.push({ label: 'Open pane', onselect: () => act('resume', () => api.resume(row.id, row.machine)) })
+    items.push({ separator: true })
+    items.push({ label: '+ Child thread', onselect: () => (newParent = row.id) })
+    items.push({ label: 'Fork', onselect: () => (forkTarget = row) })
+    items.push({ label: 'Set parent…', onselect: () => { selectedId = row.id; reparentPick = true } })
+    items.push({ label: 'Rename', onselect: () => (renameTarget = row) })
+    items.push({ label: row.archived ? 'Unarchive' : 'Archive', onselect: () => act('archive', () => api.archive(row.id, !row.archived, row.machine)) })
+    items.push({ separator: true })
+    items.push({ label: 'Delete', danger: true, onselect: () => (deleteTarget = row) })
+    return items
+  }
+  function openRowMenu(x, y, row) { selectedId = row.id; ctxMenu = { x, y, items: rowMenuItems(row) } }
 
   // Tags (chip strip on the detail header) — add/remove via POST /v1/threads/tag.
   let tagDraft = $state('')
@@ -192,6 +213,7 @@
           ondragover={(e) => { if (dragId && dragId !== row.id) { e.preventDefault(); dropOn = row.id } }}
           ondragleave={() => { if (dropOn === row.id) dropOn = null }}
           ondrop={(e) => { e.preventDefault(); onDropRow(row.id) }}
+          oncontextmenu={(e) => { e.preventDefault(); openRowMenu(e.clientX, e.clientY, row) }}
           title={dragId ? 'drop to set as parent' : ''}>
           {#if hasChildren}
             <span class="fold" style="left:{depth * 16}px" role="button" tabindex="-1"
@@ -324,6 +346,10 @@
     <ConfirmDialog title="Delete thread?" danger confirmLabel="Delete"
       message={`"${deleteTarget.name || shortId(deleteTarget.id)}" — ${deleteTarget.head === 'headful' ? 'its runtime is LIVE; this orphans the agent (--force).' : 'the record only.'}`}
       onconfirm={doDelete} oncancel={() => (deleteTarget = null)} />
+  {/if}
+
+  {#if ctxMenu}
+    <ContextMenu items={ctxMenu.items} x={ctxMenu.x} y={ctxMenu.y} onclose={() => (ctxMenu = null)} />
   {/if}
 </div>
 

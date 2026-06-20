@@ -8,6 +8,7 @@
   import { poll } from '../lib/connection.svelte.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
+  import ContextMenu from './ContextMenu.svelte'
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
   let entries = $state(cacheGet('tickets')?.data || [])
@@ -79,12 +80,43 @@
       pushInfo(`found on ${r.machine}`)
     } catch (e) { pushError(`find: ${e.message ?? e}`) }
   }
-  // Move a ticket to another machine (daemon-coordinated; carries blobs).
-  async function openMove() {
-    try { machineChoices = ((await api.mesh()).machines || []).map((m) => m.machine).filter((m) => m !== selMachine) }
+  // Move a ticket to another machine (daemon-coordinated; carries blobs). Shared by the detail
+  // button and the card context menu — both route via the ticket's owning machine.
+  async function openMoveFor(id, from) {
+    try { machineChoices = ((await api.mesh()).machines || []).map((m) => m.machine).filter((m) => m !== from) }
     catch (e) { pushError(e); return }
-    moveFor = { id: sel.id, from: selMachine }
+    moveFor = { id, from }
   }
+  const openMove = () => openMoveFor(sel.id, selMachine)
+
+  // Right-click (desktop) / long-press (Android) → context menu of a card's existing actions,
+  // each routed via the card's owning machine (entry.machine) — no need to open the detail first.
+  let ctxMenu = $state(null)
+  let cardDel = $state(null)
+  async function cardSetStatus(entry, status) {
+    const t = entry.ticket
+    if (status === 'active' && !t.thread_id) { open(entry); return } // needs a thread bind → open detail
+    try { await api.ticketSetStatus(t.id, status, t.thread_id, undefined, entry.machine); await refresh() }
+    catch (e) { pushError(`set-status ${status}: ${e.message ?? e}`) }
+  }
+  async function cardUnbind(entry) {
+    try { await api.ticketUnbind(entry.ticket.id, entry.machine); await refresh() } catch (e) { pushError(e) }
+  }
+  async function doCardDel() {
+    const entry = cardDel; cardDel = null
+    try { await api.ticketDelete(entry.ticket.id, entry.machine); if (sel?.id === entry.ticket.id) sel = null; await refresh() }
+    catch (e) { pushError(e) }
+  }
+  function cardMenuItems(entry) {
+    const t = entry.ticket
+    const items = [{ label: 'Open', onselect: () => open(entry) }, { separator: true }]
+    for (const s of TICKET_STATUSES) if (s !== t.status) items.push({ label: `→ ${s}`, onselect: () => cardSetStatus(entry, s) })
+    items.push({ separator: true }, { label: 'Move…', onselect: () => openMoveFor(t.id, entry.machine) })
+    if (t.thread_id) items.push({ label: 'Unbind', onselect: () => cardUnbind(entry) })
+    items.push({ separator: true }, { label: 'Delete', danger: true, onselect: () => (cardDel = entry) })
+    return items
+  }
+  function openCardMenu(x, y, entry) { ctxMenu = { x, y, items: cardMenuItems(entry) } }
   async function moveTo(to) {
     const { id, from } = moveFor
     moveFor = null
@@ -133,7 +165,8 @@
         <div class="col-head" style="color:{TICKET_COLORS[s]}">{s} <span>{byStatus(s).length}</span></div>
         <div class="cards">
           {#each byStatus(s) as e (e.ticket.id)}
-            <button class="card" onclick={() => open(e)} style="border-left-color:{TICKET_COLORS[s]}">
+            <button class="card" onclick={() => open(e)} style="border-left-color:{TICKET_COLORS[s]}"
+              oncontextmenu={(ev) => { ev.preventDefault(); openCardMenu(ev.clientX, ev.clientY, e) }}>
               <div class="cname">{e.ticket.name || '(unnamed)'}</div>
               <div class="cmeta">
                 <span class="machine">{e.machine}</span>
@@ -215,6 +248,16 @@
     <ConfirmDialog title="Delete ticket?" danger confirmLabel="Delete"
       message={`"${sel?.name || 'this ticket'}" will be removed.`}
       onconfirm={del} oncancel={() => (confirmDel = false)} />
+  {/if}
+
+  {#if cardDel}
+    <ConfirmDialog title="Delete ticket?" danger confirmLabel="Delete"
+      message={`"${cardDel.ticket.name || 'this ticket'}" will be removed.`}
+      onconfirm={doCardDel} oncancel={() => (cardDel = null)} />
+  {/if}
+
+  {#if ctxMenu}
+    <ContextMenu items={ctxMenu.items} x={ctxMenu.x} y={ctxMenu.y} onclose={() => (ctxMenu = null)} />
   {/if}
 </div>
 
