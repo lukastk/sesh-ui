@@ -10,6 +10,8 @@
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
+  import { longpress } from '../lib/longpress.js'
+  import { dragscrollx } from '../lib/dragscrollx.js'
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
   let entries = $state(cacheGet('tickets')?.data || [])
@@ -161,14 +163,15 @@
     {#if unreachable.length}<span class="warn">⚠ unreachable: {unreachable.join(', ')}</span>{/if}
   </div>
 
-  <div class="board">
+  <div class="board" use:dragscrollx>
     {#each TICKET_STATUSES as s}
       <div class="col">
         <div class="col-head" style="color:{TICKET_COLORS[s]}">{s} <span>{byStatus(s).length}</span></div>
         <div class="cards">
           {#each byStatus(s) as e (e.ticket.id)}
             <button class="card" onclick={() => open(e)} style="border-left-color:{TICKET_COLORS[s]}"
-              oncontextmenu={(ev) => { ev.preventDefault(); openCardMenu(ev.clientX, ev.clientY, e) }}>
+              oncontextmenu={(ev) => { ev.preventDefault(); openCardMenu(ev.clientX, ev.clientY, e) }}
+              use:longpress={{ onlongpress: (lp) => openCardMenu(lp.x, lp.y, e) }}>
               <div class="cname">{e.ticket.name || '(unnamed)'}</div>
               <div class="cmeta">
                 <span class="machine">{e.machine}</span>

@@ -8,7 +8,8 @@
   import { onMount, onDestroy } from 'svelte'
   import { api } from '../../lib/seshClient.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
-  import { fontScale, bumpTerm } from '../../lib/fontscale.svelte.js'
+  import { fontScale, bumpTerm, setTerm } from '../../lib/fontscale.svelte.js'
+  import { pinch } from '../../lib/pinch.js'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
   let el
@@ -41,9 +42,37 @@
     if (files.length) { e.preventDefault(); e.stopImmediatePropagation(); attachFiles(files) }
   }
 
+  // Touch-swipe scrolling (Android): xterm scrolls on `wheel` events, which a touch swipe never
+  // produces — so the phone couldn't scroll the terminal at all. Synthesize wheel events from a
+  // one-finger vertical drag and let xterm's OWN handler do the right thing in BOTH modes: scroll the
+  // scrollback in the normal buffer, and translate to cursor-key sequences for an alt-screen TUI
+  // (claude/pi/codex), exactly as a mouse wheel does on desktop. deltaY is in pixels (deltaMode 0),
+  // so it tracks the finger 1:1. Natural direction: drag down → wheel up (older), drag up → newer.
+  let touchY = null
+  function onTouchStart(e) {
+    if (e.touches.length === 1) touchY = e.touches[0].clientY
+  }
+  function onTouchMove(e) {
+    if (touchY == null || e.touches.length !== 1) return
+    const y = e.touches[0].clientY
+    const dy = touchY - y
+    touchY = y
+    if (!dy) return
+    const tgt = el.querySelector('.xterm-viewport') || el
+    tgt.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true }))
+  }
+  function onTouchEnd() { touchY = null }
+
+  // Pinch-to-zoom over the terminal → its OWN font size (fontScale.term), independent of the app
+  // scale. Reuses the shared store, so the A−/A+ buttons and the desktop controls all stay in sync.
+  let pinchBaseTerm = 13
+  function onPinchStart() { pinchBaseTerm = fontScale.term }
+  function onPinchMove(scale) { setTerm(Math.round(pinchBaseTerm * scale)) }
+
   function connect() {
     term = new Terminal({
       cursorBlink: true, fontSize: fontScale.term, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      scrollback: 5000,  // a real scrollback buffer to scroll through (was the implicit small default)
       theme: { background: '#16161e', foreground: '#c0caf5', cursor: '#7aa2f7' },
     })
     fit = new FitAddon()
@@ -65,10 +94,22 @@
     ro.observe(el)
     // Capture phase so we see an image paste before xterm's textarea does.
     el.addEventListener('paste', onPasteCapture, true)
+    // Touch-swipe → scrollback (capture so xterm's own touch handling doesn't swallow it; passive
+    // since nothing scrolls natively here — we drive xterm.scrollLines directly).
+    el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true })
+    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: true })
+    el.addEventListener('touchend', onTouchEnd, { capture: true, passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true })
   }
   onMount(connect)
   onDestroy(() => {
     try { el?.removeEventListener('paste', onPasteCapture, true) } catch {}
+    try {
+      el?.removeEventListener('touchstart', onTouchStart, { capture: true })
+      el?.removeEventListener('touchmove', onTouchMove, { capture: true })
+      el?.removeEventListener('touchend', onTouchEnd, { capture: true })
+      el?.removeEventListener('touchcancel', onTouchEnd, { capture: true })
+    } catch {}
     try { ro?.disconnect() } catch {}
     try { ws?.close() } catch {}
     try { term?.dispose() } catch {}
@@ -87,7 +128,7 @@
   })
 </script>
 
-<div class="termwrap" style="zoom:{counterZoom}">
+<div class="termwrap" style="zoom:{counterZoom}" use:pinch={{ onpinchstart: onPinchStart, onpinch: onPinchMove }}>
   <div class="term" bind:this={el}></div>
   <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
   <div class="tctl">
