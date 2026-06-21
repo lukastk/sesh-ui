@@ -34,9 +34,10 @@ export default defineConfig(({ command }) => ({
         rewrite: (p) => p.replace(/^\/api/, '/v1'),
         configure: authHook,
       },
-      // streaming endpoints (the two daemon WebSockets — token injected on the WS upgrade):
+      // streaming endpoints (the daemon WebSockets — token injected on the WS upgrade):
       '/v1/threads/rpc': { target: DAEMON, ws: true, changeOrigin: true, configure: authHook },
       '/v1/threads/terminal': { target: DAEMON, ws: true, changeOrigin: true, configure: authHook },
+      '/v1/master/terminal': { target: DAEMON, ws: true, changeOrigin: true, configure: authHook },
     },
   },
 }))

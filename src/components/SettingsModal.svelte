@@ -28,6 +28,7 @@
       cwd_roots: uiCfg.cwd_roots || [],
       cwd_labels: uiCfg.cwd_labels || [],
       transcript_prefetch_secs: uiCfg.transcript_prefetch_secs ?? 10,
+      master_command: uiCfg.master_command ?? '',
       ...patch,
     }
     try {
@@ -42,6 +43,9 @@
     const n = Math.max(0, Math.floor(Number(v)))
     saveUiConfig({ transcript_prefetch_secs: Number.isFinite(n) ? n : 0 })
   }
+  // master_command: the shell command the Master screen runs in a pty (e.g. "mmt-start"). Empty = the
+  // master endpoint is disabled on this daemon (the Master screen shows a "not configured" notice).
+  const setMasterCommand = (v) => saveUiConfig({ master_command: v.trim() })
   function addRoot() {
     const r = newRoot.trim()
     if (!r) return
@@ -156,6 +160,15 @@
         <p class="note">The app silently prefetches every non-archived thread's transcript on this interval and caches it, so opening a thread's transcript is instant. 0 disables it.</p>
       {/if}
 
+      {#if uiCfg.master_command !== undefined}
+        <label class="mastercmd">
+          Master command (Master tab; e.g. mmt-start)
+          <input value={uiCfg.master_command} placeholder="(unset — Master tab disabled)"
+            onchange={(e) => setMasterCommand(e.currentTarget.value)} />
+        </label>
+        <p class="note">The shell command the <b>Master</b> tab runs in a pty to attach this machine's master tmux cockpit. Runs via <code>$SHELL -ic</code> so functions/aliases resolve. Empty disables the Master endpoint on this daemon.</p>
+      {/if}
+
       {#if uiCfg.cwd_roots !== undefined}
         <div class="roots">
           <span class="roots-label">New-thread folders (cwd_roots)</span>
@@ -206,6 +219,7 @@
   label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9aa5ce; }
   .check { flex-direction: row; align-items: center; gap: 8px; color: #c0caf5; font-size: 13px; }
   .prefetch input { width: 90px; }
+  .mastercmd input { font-family: ui-monospace, monospace; font-size: 12px; }
   .roots { display: flex; flex-direction: column; gap: 4px; }
   .roots-label { font-size: 11px; color: #565f89; }
   .root { display: flex; align-items: center; gap: 8px; background: #1a1b26; border: 1px solid #232433;

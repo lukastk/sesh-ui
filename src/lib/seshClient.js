@@ -109,7 +109,9 @@ export const api = {
 
   // ── ui-config (per-daemon UI prefs; <SESH_HOME>/ui_config.toml, daemon schema ≥24) ─────────
   // GET → {schema, ui_config:{collapse_parents,…}} (defaults applied); POST replaces + returns it.
-  uiConfigGet: () => sesh.get('/ui-config'),
+  // `machine` (optional) reads the config from a PEER daemon (Electron) — used by the Master screen
+  // to discover whether master_command is set on the machine whose cockpit you're opening.
+  uiConfigGet: (machine) => sesh.get('/ui-config', machine),
   uiConfigSet: (cfg) => sesh.post('/ui-config', cfg),
 
   // ── peers (mesh membership; /v1/peers CRUD, daemon schema ≥22) ─────────────
@@ -186,6 +188,10 @@ export const api = {
   rpcURL: (id, machine) => sesh.wsURL(`/v1/threads/rpc?id=${encodeURIComponent(id)}`, machine),
   terminalURL: (id, cols, rows, machine) =>
     sesh.wsURL(`/v1/threads/terminal?id=${encodeURIComponent(id)}&cols=${cols}&rows=${rows}`, machine),
+  // The master-cockpit terminal WS (daemon runs ui_config.master_command in a pty; schema ≥28).
+  // Same pty<->WS protocol as the thread terminal; `machine` routes to that peer's master (the
+  // wsURL seam injects the token + __machine for every transport).
+  masterURL: (cols, rows, machine) => sesh.wsURL(`/v1/master/terminal?cols=${cols}&rows=${rows}`, machine),
 }
 
 export const TICKET_STATUSES = ['triage', 'ready', 'active', 'done', 'dropped']
