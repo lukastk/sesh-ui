@@ -49,6 +49,9 @@
   let history = $state([])     // completed turns from the transcript (authoritative) {role,text,thinking}
   let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
   let draft = $state('')
+  let composerEl = $state(null) // the message textarea — auto-focused on mount (entering this view)
+  // Focus the composer when the view mounts so you can type immediately on opening/switching threads.
+  $effect(() => { composerEl?.focus() })
   let state = $state('connecting…')
   let currentModel = $state(null) // live model from state.config.model (Phase 2 reflects set_model)
   let modelDraft = $state('')     // the live-switch input
@@ -206,7 +209,7 @@
       </div>
     {/if}
     <div class="composer">
-      <textarea bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send · drop/paste a file to attach its path" onkeydown={onkey} onpaste={onPaste}></textarea>
+      <textarea bind:this={composerEl} bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send · drop/paste a file to attach its path" onkeydown={onkey} onpaste={onPaste}></textarea>
       <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
       <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image (inserts its path)">{uploading ? '…' : '📎'}</button>
       <button onclick={send}>Send</button>

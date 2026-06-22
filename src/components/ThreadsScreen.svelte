@@ -5,6 +5,8 @@
   // kept separate from the live-poll model so a poll tick never wipes an action error.
   import { api, sesh } from '../lib/seshClient.js'
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
+  import { fuzzyScore } from '../lib/fuzzy.js'
+  import { matchAction } from '../lib/keymap.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll, conn } from '../lib/connection.svelte.js'
   import { copyText } from '../lib/clipboard.js'
@@ -25,6 +27,8 @@
   let selectedId = $state(null)
   let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
   let filter = $state('')
+  let filterEl = $state(null)        // the filter <input> (cmd+f focuses it)
+  let filterActive = $state(0)       // fzf: index of the highlighted candidate in `filtered`
   let showArchived = $state(false)
   // Default ON: show the WHOLE mesh (matches `sesh tui`, whose wrapper adds --all-machines).
   // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
@@ -102,15 +106,47 @@
   })
 
   let filtered = $derived.by(() => {
-    const q = filter.trim().toLowerCase()
+    const q = filter.trim()
     if (!q) return tree
-    // When filtering, drop the tree indent and show flat matches by name/agent/cwd.
+    // When filtering, drop the tree indent and show flat fzf-ranked matches (name/agent/cwd).
     return tree
-      .filter(({ row }) => `${row.name} ${row.agent_kind} ${row.cwd_rel || row.cwd}`.toLowerCase().includes(q))
+      .map(({ row }) => ({ row, s: fuzzyScore(q, `${row.name} ${row.agent_kind} ${row.cwd_rel || row.cwd}`) }))
+      .filter((x) => x.s !== null)
+      .sort((a, b) => a.s - b.s || (a.row.name || '').localeCompare(b.row.name || ''))
       .map(({ row }) => ({ row, depth: 0, hasChildren: false, collapsed: false }))
   })
+  // fzf: the highlighted candidate, clamped to the live list (which shrinks/grows as you type and on
+  // each poll). Highlighting is purely visual — we DO NOT load the thread as you type (that would
+  // make typing janky); the thread only loads on Enter or click (see onFilterKey/select).
+  let activeIdx = $derived(Math.min(filterActive, Math.max(0, filtered.length - 1)))
+  $effect(() => { void filter; filterActive = 0 })   // reset to the top match when the query changes
+  // keep the highlighted candidate visible
+  $effect(() => { void activeIdx; if (filter.trim()) listEl?.querySelector('.row.fzactive')?.scrollIntoView({ block: 'nearest' }) })
+  let listEl = $state(null)
+
+  function onFilterKey(e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); filterActive = Math.min(activeIdx + 1, filtered.length - 1) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); filterActive = Math.max(activeIdx - 1, 0) }
+    else if (e.key === 'Enter') { e.preventDefault(); const f = filtered[activeIdx]; if (f) select(f.row) }
+    else if (e.key === 'Escape') { e.preventDefault(); filter = '' }
+  }
 
   function select(r) { selectedId = r.id; mode = 'auto' }
+
+  // cmd+e: flip between the terminal and the primary live view (pi → RPC, others → transcript). The
+  // terminal only exists for a headful pane, so for an idle thread this just lands on the primary.
+  function toggleView() {
+    if (!selected || blockedRemote) return
+    const primary = selected.agent_kind === 'pi' ? 'rpc' : 'headless'
+    mode = surface === 'terminal' ? primary : (selected.head === 'headful' ? 'terminal' : primary)
+  }
+
+  // Threads-scoped shortcuts (active only while this screen is mounted): cmd+e/f/n.
+  function onScreenKey(e) {
+    if (matchAction(e, 'threads.focusFilter')) { e.preventDefault(); filterEl?.focus(); filterEl?.select(); return }
+    if (matchAction(e, 'threads.new')) { e.preventDefault(); newParent = ''; return }
+    if (matchAction(e, 'threads.toggleView')) { e.preventDefault(); toggleView() }
+  }
 
   function copyId(id) { copyText(id) ? pushInfo('Copied full id') : pushError('copy failed') }
 
@@ -238,6 +274,8 @@
   )
 </script>
 
+<svelte:window onkeydown={onScreenKey} />
+
 <div class="screen" class:detail={!!selected} class:resizing style="--sidebar-w:{sidebarWidth}px">
   <aside>
     <div class="head">
@@ -245,7 +283,7 @@
       <button class="new" onclick={() => (newParent = '')}>+ New</button>
     </div>
     <div class="controls">
-      <input class="filter" bind:value={filter} placeholder="filter…" />
+      <input class="filter" bind:this={filterEl} bind:value={filter} placeholder="filter…  (⌘F)" onkeydown={onFilterKey} />
       <label class="arch"><input type="checkbox" bind:checked={showArchived} /> archived</label>
       <label class="arch" title="show threads from every machine in the mesh (like sesh tui)"><input type="checkbox" bind:checked={showAllMachines} /> all&nbsp;machines</label>
     </div>
@@ -254,9 +292,9 @@
         ondragover={(e) => { e.preventDefault(); dropOn = '' }} ondragleave={() => (dropOn = null)}
         ondrop={(e) => { e.preventDefault(); onDropRow('') }} role="presentation">↥ drop here to make a root thread</div>
     {/if}
-    <div class="list">
-      {#each filtered as { row, depth, hasChildren, collapsed } (row.id)}
-        <button class="row {selectedId === row.id ? 'sel' : ''}" class:dragging={dragId === row.id} class:dropover={dropOn === row.id}
+    <div class="list" bind:this={listEl}>
+      {#each filtered as { row, depth, hasChildren, collapsed }, i (row.id)}
+        <button class="row {selectedId === row.id ? 'sel' : ''}" class:fzactive={filter.trim() && i === activeIdx} class:dragging={dragId === row.id} class:dropover={dropOn === row.id}
           style="padding-left:{20 + depth * 16}px" onclick={() => select(row)}
           draggable="true" ondragstart={(e) => onDragStart(e, row.id)} ondragend={onDragEnd}
           ondragover={(e) => { if (dragId && dragId !== row.id) { e.preventDefault(); dropOn = row.id } }}
@@ -435,6 +473,8 @@
     border: 1px dashed #1e3a4a; border-radius: 7px; background: #11202b; }
   .root-drop.over { background: #1c2a3a; border-color: #7dcfff; }
   .row:hover { background: #15161f; }
+  /* fzf active candidate (Enter target while filtering) — distinct from the loaded selection. */
+  .row.fzactive { background: #1c2438; box-shadow: inset 2px 0 0 #7dcfff; }
   .row.sel { background: #181a26; border-left-color: #7aa2f7; }
   .row .g { font-size: 14px; color: #565f89; grid-row: 1 / span 2; }
   .row .g.busy { color: #e0af68; }

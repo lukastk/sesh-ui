@@ -8,6 +8,7 @@
   import { cacheGet } from './lib/snapshot.svelte.js'
   import { startTranscriptPrefetch, stopTranscriptPrefetch } from './lib/transcriptCache.js'
   import { fontScale, bumpScale, resetScale, setScale } from './lib/fontscale.svelte.js'
+  import { matchAction } from './lib/keymap.svelte.js'
   import { pinch } from './lib/pinch.js'
   import { registerBack, runBack } from './lib/back.js'
   import { App as CapApp } from '@capacitor/app'
@@ -56,12 +57,20 @@
 
   // Apply the app-wide UI scale (reactive): a CSS var consumed by `.app { zoom: var(--font-scale) }`.
   $effect(() => { document.documentElement.style.setProperty('--font-scale', String(fontScale.scale)) })
-  // Desktop shortcuts: Cmd/Ctrl +/- to scale, Cmd/Ctrl 0 to reset. (Android pinch drives the same store.)
+
+  // Global shortcuts. Screen-scoped ones (Threads/Tickets cmd+e/f/n) are handled inside each screen,
+  // which is only mounted when active — so this handler owns just the always-on ones: UI scale, the
+  // cmd+1..5 screen switch, and cmd+, settings.
+  const NAV = { 'nav.threads': 'threads', 'nav.tickets': 'tickets', 'nav.machines': 'machines', 'nav.automation': 'automation', 'nav.master': 'master' }
   function onKey(e) {
-    if (!(e.metaKey || e.ctrlKey)) return
-    if (e.key === '=' || e.key === '+') { e.preventDefault(); bumpScale(0.1) }
-    else if (e.key === '-' || e.key === '_') { e.preventDefault(); bumpScale(-0.1) }
-    else if (e.key === '0') { e.preventDefault(); resetScale() }
+    if (e.metaKey || e.ctrlKey) {
+      // UI scale: Cmd/Ctrl +/-, Cmd/Ctrl 0. (Android pinch drives the same store.)
+      if (e.key === '=' || e.key === '+') { e.preventDefault(); bumpScale(0.1); return }
+      if (e.key === '-' || e.key === '_') { e.preventDefault(); bumpScale(-0.1); return }
+      if (e.key === '0') { e.preventDefault(); resetScale(); return }
+    }
+    if (matchAction(e, 'app.settings')) { e.preventDefault(); showSettings = true; return }
+    for (const id in NAV) if (matchAction(e, id)) { e.preventDefault(); screen = NAV[id]; return }
   }
 
   // Android pinch-to-zoom drives the SAME app-wide scale store (the terminal has its own pinch →

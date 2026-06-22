@@ -79,6 +79,7 @@
     term.loadAddon(fit)
     term.open(el)
     fit.fit()
+    term.focus()   // entering the terminal view (open/switch thread, Enter on the filter) → ready to type
 
     ws = new WebSocket(api.terminalURL(threadId, term.cols, term.rows, machine))
     ws.binaryType = 'arraybuffer'

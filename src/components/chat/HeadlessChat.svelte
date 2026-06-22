@@ -31,6 +31,11 @@
   let attachments = $state([])    // {name, token} blobs referenced in the draft
   let uploading = $state(false)
   let fileInput
+  let composerEl = $state(null)   // the message textarea — auto-focused on mount (entering this view)
+
+  // Focus the composer as soon as the view mounts, so opening a thread / entering Transcript mode
+  // lets you type immediately (the surface is keyed per thread+view, so this fires on each switch).
+  $effect(() => { composerEl?.focus() })
 
   // Upload files to the thread's owning blob store and drop an @blob(hash) token into the draft.
   async function attachFiles(files) {
@@ -178,7 +183,7 @@
       </div>
     {/if}
     <div class="composer">
-      <textarea bind:value={draft} placeholder={headful ? 'Send into the live pane… (⌘/Ctrl+Enter) · drop/paste a file' : 'Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach'} onkeydown={onkey} onpaste={onPaste}></textarea>
+      <textarea bind:this={composerEl} bind:value={draft} placeholder={headful ? 'Send into the live pane… (⌘/Ctrl+Enter) · drop/paste a file' : 'Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach'} onkeydown={onkey} onpaste={onPaste}></textarea>
       <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
       <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image">{uploading ? '…' : '📎'}</button>
       <button onclick={send} disabled={sending}>{sending ? '…' : 'Send'}</button>

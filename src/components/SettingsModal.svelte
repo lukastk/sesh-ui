@@ -6,8 +6,36 @@
   import { sesh, api } from '../lib/seshClient.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { startTranscriptPrefetch } from '../lib/transcriptCache.js'
+  import { KEYMAP_DEFS, keymap, setBinding, resetBinding, resetAllBindings, fmtCombo, comboFromEvent } from '../lib/keymap.svelte.js'
 
   let { onclose } = $props()
+
+  // Keyboard shortcuts: click a binding to rebind, then press the new combo (Esc cancels). The
+  // capture listener runs in the CAPTURE phase + stops propagation so the chord we're recording
+  // never also fires its own action (e.g. cmd+1 rebinding wouldn't switch screens).
+  let capturing = $state(null)   // action id being rebound, or null
+  $effect(() => {
+    if (!capturing) return
+    const handler = (e) => {
+      e.preventDefault(); e.stopImmediatePropagation()
+      if (e.key === 'Escape') { capturing = null; return }
+      const combo = comboFromEvent(e)
+      if (!combo) return           // bare modifier — keep waiting for the real key
+      setBinding(capturing, combo); capturing = null
+    }
+    window.addEventListener('keydown', handler, { capture: true })
+    return () => window.removeEventListener('keydown', handler, { capture: true })
+  })
+  // Group the catalog by scope for display, preserving catalog order.
+  const keymapGroups = (() => {
+    const groups = []
+    for (const def of KEYMAP_DEFS) {
+      let g = groups.find((x) => x.scope === def.scope)
+      if (!g) { g = { scope: def.scope, defs: [] }; groups.push(g) }
+      g.defs.push(def)
+    }
+    return groups
+  })()
 
   let cfg = $state(null)        // { mode, target, hasToken, editable }
   // Per-daemon UI config (served from <SESH_HOME>/ui_config.toml on the connected daemon, schema ≥24).
@@ -207,6 +235,30 @@
     {:else}
       <p class="note">loading…</p>
     {/if}
+
+    <hr class="sep" />
+    <div class="km-head">
+      <h3>Keyboard shortcuts</h3>
+      <button class="km-resetall" onclick={resetAllBindings}>Reset all</button>
+    </div>
+    {#each keymapGroups as g (g.scope)}
+      <div class="km-group">
+        <span class="km-scope">{g.scope}</span>
+        {#each g.defs as def (def.id)}
+          <div class="km-row">
+            <span class="km-label">{def.label}</span>
+            <button class="km-bind" class:capturing={capturing === def.id}
+              onclick={() => (capturing = capturing === def.id ? null : def.id)}>
+              {capturing === def.id ? 'press keys…' : fmtCombo(keymap[def.id])}
+            </button>
+            {#if keymap[def.id] !== def.default}
+              <button class="km-reset" title="reset to {fmtCombo(def.default)}" onclick={() => resetBinding(def.id)} aria-label="reset {def.label}">↺</button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/each}
+    <p class="note">Stored locally in this app. <b>mod</b> = ⌘ on macOS, Ctrl elsewhere. The Threads/Tickets shortcuts apply on their own screen (so <b>{fmtCombo('mod+n')}</b> is new-thread or new-ticket depending on where you are).</p>
   </div>
 </div>
 
@@ -249,4 +301,19 @@
   .actions .primary { background: #7aa2f7; color: #11121a; border: 0; font-weight: 600; }
   .actions button:disabled { opacity: 0.5; }
   code { color: #7aa2f7; }
+
+  .km-head { display: flex; align-items: center; justify-content: space-between; }
+  .km-resetall { background: #1a1b26; color: #9aa5ce; border: 1px solid #2a2b3d; border-radius: 6px;
+    padding: 4px 10px; font-size: 11px; cursor: pointer; }
+  .km-resetall:hover { background: #232433; color: #c0caf5; }
+  .km-group { display: flex; flex-direction: column; gap: 4px; }
+  .km-scope { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+  .km-row { display: flex; align-items: center; gap: 8px; }
+  .km-label { flex: 1; font-size: 12px; color: #c0caf5; }
+  .km-bind { min-width: 72px; text-align: center; background: #1a1b26; color: #7dcfff; border: 1px solid #2a2b3d;
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: ui-monospace, monospace; }
+  .km-bind:hover { background: #232433; }
+  .km-bind.capturing { color: #e0af68; border-color: #e0af68; font-family: inherit; }
+  .km-reset { background: none; border: 0; color: #565f89; cursor: pointer; font-size: 13px; padding: 0 2px; }
+  .km-reset:hover { color: #c0caf5; }
 </style>
