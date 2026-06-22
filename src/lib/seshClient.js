@@ -148,6 +148,17 @@ export const api = {
   // `machine` (optional) lists on the TARGET daemon (a ~-cwd resolves portably on the owner).
   fsList: (path, machine) => sesh.get('/fs/list' + qs({ path }), machine),
 
+  // ── plugins (daemon command-providers; schema ≥29) ─────────────────────────
+  // The daemon runs manifest-declared commands ON ITS OWN HOST and shapes them for the UI.
+  // Both route by `machine` (optional) — plugins are PER-MACHINE (e.g. the boxes on the target
+  // daemon), so the cwd picker passes the new-thread target machine through to both.
+  plugins: (machine) => sesh.get('/plugins', machine),
+  // Run one capability: list-kind returns { items: [...] }; action-kind runs the command and
+  // substitutes its `{field}` placeholders. The daemon wants the field values under `fields`
+  // (the run handler decodes strictly: a bare {name:…} 400s with "unknown field").
+  pluginRun: (name, capability, fields, machine) =>
+    sesh.post(`/plugins/${encodeURIComponent(name)}/${encodeURIComponent(capability)}`, { fields: fields || {} }, machine),
+
   // ── tickets ──────────────────────────────────────────────────────────────
   // Ticket ops take the ticket's owning `machine` (optional) — a remote ticket 404s without it.
   ticketsAll: () => sesh.get('/tickets/list-all'),
