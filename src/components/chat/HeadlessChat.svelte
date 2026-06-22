@@ -14,7 +14,10 @@
   // headful: this thread has a LIVE pane (claude/codex viewed in transcript mode) — the composer
   // delivers via `thread send` (send-keys into the pane), NOT send-headless, and the transcript is
   // polled so the live agent's streamed reply appears.
-  let { threadId, agentKind = 'pi', machine = undefined, headful = false } = $props()
+  // `busy` is the thread's live state ("busy" while a turn is in flight — a headful pane
+  // mid-turn or a headless turn running, detected daemon-side); it drives the "thinking"
+  // bubble even for turns NOT started from this app (typed into the pane, fired from the TUI).
+  let { threadId, agentKind = 'pi', machine = undefined, headful = false, busy = 'idle' } = $props()
 
   let msgs = $state([])       // {role, text, thinking?}
   let draft = $state('')
@@ -144,8 +147,8 @@
         {#if m.text}{#if m.role === 'user' || m.role === 'error'}<div class="text">{m.text}</div>{:else}<div class="text"><Markdown text={m.text} /></div>{/if}{/if}
       </div>
     {/each}
-    {#if sending}<div class="bubble assistant pending">…thinking</div>{/if}
-    {#if msgs.length === 0 && !loadErr && !sending}
+    {#if sending || busy === 'busy'}<div class="bubble assistant pending">…thinking</div>{/if}
+    {#if msgs.length === 0 && !loadErr && !sending && busy !== 'busy'}
       {#if loading}<div class="empty">Loading…</div>
       {:else}<div class="empty">{headful ? 'No transcript yet — send a message into the live pane below.' : 'No transcript yet — send a headless turn below.'}</div>{/if}
     {/if}
