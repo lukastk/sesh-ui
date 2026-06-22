@@ -87,9 +87,13 @@
     padding: 9px 11px; font-size: 14px; }
   .fz-x { background: none; border: 0; color: #9aa5ce; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; }
   .fz-err { background: #3a1c28; color: #ffb4c0; border-radius: 6px; padding: 8px; font-size: 11px; word-break: break-word; }
-  .fz-list { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 1px; }
-  .fz-item { text-align: left; background: none; border: 0; color: #c0caf5; padding: 8px 11px; border-radius: 6px;
-    cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fz-item.on { background: #1e3a4a; }
+  .fz-list { max-height: 52vh; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 2px; }
+  /* flex: 0 0 auto is load-bearing: without it the rows are flex children that SHRINK to fit the
+     fixed-height column (489 boxes → each crushed to ~16px, text clipped) instead of scrolling. */
+  .fz-item { flex: 0 0 auto; text-align: left; background: none; border: 0; color: #c0caf5; font: inherit;
+    font-size: 14px; line-height: 1.45; padding: 9px 12px; border-radius: 6px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fz-item:hover { background: #1c1d2b; }
+  .fz-item.on { background: #2d4f63; color: #fff; }
   .fz-msg { color: #565f89; font-size: 12px; padding: 8px 11px; }
 </style>

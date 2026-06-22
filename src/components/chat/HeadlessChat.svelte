@@ -127,6 +127,10 @@
     msgs = cached || []
     loading = !cached
     atBottom = true
+    // Open at the LATEST, not the top. The cached render paints instantly (loading=false), but the
+    // first scrollDown otherwise waits for the fresh fetch in load() to resolve — on a slow/remote
+    // daemon that leaves the view stuck at the top until the network lands. Snap down now too.
+    if (cached?.length) scrollDown(true)
     load()
   })
   // A headful pane's reply streams into the transcript over time — poll-reload while viewing it
