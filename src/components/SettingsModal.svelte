@@ -47,6 +47,12 @@
       .catch((e) => { if (/:\s*404/.test(String(e))) uiUnsupported = true; else pushError(e) })
   })
   let newRoot = $state('')
+  // Mesh machines for the "default machine" dropdown (connected + dial-able peers).
+  let machines = $state([])
+  let connectedMachine = $state(null)
+  $effect(() => {
+    sesh.peerInfo().then((i) => { connectedMachine = i.connected; machines = [i.connected, ...(i.peers || [])].filter(Boolean) }).catch(() => {})
+  })
   // POST is a full REPLACE (an absent key resets to default), so always send the WHOLE config —
   // merge the patch over ALL current values so changing one setting never clobbers another (incl.
   // cwd_labels and transcript_prefetch_secs, which would otherwise reset when toggling e.g. collapse).
@@ -57,6 +63,11 @@
       cwd_labels: uiCfg.cwd_labels || [],
       transcript_prefetch_secs: uiCfg.transcript_prefetch_secs ?? 10,
       master_command: uiCfg.master_command ?? '',
+      // New-thread defaults — only sent when the daemon exposes them (the POST decodes strictly, so
+      // sending a field a pre-default_* daemon doesn't know would 400 every save). Once present, the
+      // full-replace contract requires echoing them back so they aren't reset.
+      ...(uiCfg.default_agent !== undefined ? { default_agent: uiCfg.default_agent } : {}),
+      ...(uiCfg.default_machine !== undefined ? { default_machine: uiCfg.default_machine } : {}),
       ...patch,
     }
     try {
@@ -66,6 +77,9 @@
     catch (e) { pushError(`ui-config: ${e.message ?? e}`); uiCfg = { ...uiCfg } } // revert the controls
   }
   const setCollapseParents = (v) => saveUiConfig({ collapse_parents: v })
+  // New-thread defaults (ui_config.default_agent / default_machine; '' machine = "the connected one").
+  const setDefaultAgent = (v) => saveUiConfig({ default_agent: v })
+  const setDefaultMachine = (v) => saveUiConfig({ default_machine: v })
   // transcript_prefetch_secs: clamp to a non-negative int; '' / NaN → 0 (off).
   function setPrefetchSecs(v) {
     const n = Math.max(0, Math.floor(Number(v)))
@@ -179,6 +193,25 @@
         Collapse parent threads by default
       </label>
 
+      {#if uiCfg.default_agent !== undefined}
+        <label class="ddl">New-thread default agent
+          <select value={uiCfg.default_agent || 'pi'} onchange={(e) => setDefaultAgent(e.currentTarget.value)}>
+            {#each ['pi', 'claude', 'codex'] as a}<option value={a}>{a}</option>{/each}
+          </select>
+        </label>
+      {/if}
+      {#if uiCfg.default_machine !== undefined}
+        <label class="ddl">New-thread default machine
+          <select value={uiCfg.default_machine || ''} onchange={(e) => setDefaultMachine(e.currentTarget.value)}>
+            <option value="">(the machine you're connected to)</option>
+            {#each machines as m (m)}<option value={m}>{m}{m === connectedMachine ? ' (this)' : ''}</option>{/each}
+          </select>
+        </label>
+      {/if}
+      {#if uiCfg.default_agent === undefined}
+        <p class="note">The new-thread default agent/machine controls appear here once the connected daemon exposes them (needs <code>default_agent</code> / <code>default_machine</code> in UIConfig).</p>
+      {/if}
+
       {#if uiCfg.transcript_prefetch_secs !== undefined}
         <label class="prefetch">
           Transcript prefetch interval (seconds, 0 = off)
@@ -271,6 +304,8 @@
   label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9aa5ce; }
   .check { flex-direction: row; align-items: center; gap: 8px; color: #c0caf5; font-size: 13px; }
   .prefetch input { width: 90px; }
+  .ddl select { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
+    padding: 7px 8px; font-size: 13px; font-family: inherit; }
   .mastercmd input { font-family: ui-monospace, monospace; font-size: 12px; }
   .roots { display: flex; flex-direction: column; gap: 4px; }
   .roots-label { font-size: 11px; color: #565f89; }

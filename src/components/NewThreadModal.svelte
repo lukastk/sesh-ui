@@ -23,18 +23,12 @@
   let err = $state(null)
   let showPicker = $state(false)
 
-  // Target machine. Default = the connected/local daemon; a peer routes the spawn there (sesh
-  // `thread new --machine`). Forks inherit the source's machine, so the picker is hidden for forks.
+  // Target machine. Default = the connected/local daemon (or the ui_config default_machine, if set
+  // and reachable); a peer routes the spawn there (sesh `thread new --machine`). Forks inherit the
+  // source's machine, so the picker is hidden for forks.
   let connectedMachine = $state(null)
   let machines = $state([])
-  let machine = $state('')   // '' until peerInfo resolves; then the connected machine
-  $effect(() => {
-    sesh.peerInfo().then((i) => {
-      connectedMachine = i.connected
-      machines = [i.connected, ...(i.peers || [])].filter(Boolean)
-      if (!machine) machine = i.connected || ''
-    }).catch(() => {})
-  })
+  let machine = $state('')   // '' until peerInfo resolves; then the connected (or configured) machine
   // The machine to ROUTE to (undefined = the connected/local daemon, the common case).
   let targetMachine = $derived(machine && machine !== connectedMachine ? machine : undefined)
 
@@ -44,14 +38,29 @@
   let cwdRoots = $state([])         // string[]
   let cwdLabels = $state([])        // [{match, label}]
   let pickRoot = $state(null)       // the root whose fuzzy picker is open, or null
-  async function loadCwdConfig() {
-    try {
-      const cfg = await api.uiConfigGet()
-      cwdRoots = cfg.ui_config?.cwd_roots ?? ['~/mysetup', '~/dev'] // pre-25 daemon → built-in default
-      cwdLabels = cfg.ui_config?.cwd_labels ?? []
-    } catch { cwdRoots = [] } // pre-25 daemon with no ui-config: skip the quick-pick; Browse still works
-  }
-  $effect(() => { if (!isFork) loadCwdConfig() })
+
+  // One init: resolve the mesh (peerInfo) AND the ui_config together, then apply the user-configured
+  // new-thread defaults (ui_config.default_agent / default_machine). Doing both in one Promise avoids
+  // a race over `machine` (whose default depends on BOTH the machine list and the configured value).
+  // Forks keep their inherited agent/machine, so defaults are applied only for a fresh new-thread.
+  $effect(() => {
+    Promise.all([
+      sesh.peerInfo().catch(() => ({ connected: null, peers: [] })),
+      api.uiConfigGet().then((r) => r.ui_config || {}).catch(() => null),
+    ]).then(([info, ui]) => {
+      connectedMachine = info.connected
+      machines = [info.connected, ...(info.peers || [])].filter(Boolean)
+      // cwd quick-pick config (pre-25 daemon / unreachable ui-config → null → skip the quick-pick).
+      if (ui) { cwdRoots = ui.cwd_roots ?? ['~/mysetup', '~/dev']; cwdLabels = ui.cwd_labels ?? [] }
+      else cwdRoots = []
+      if (isFork) { machine = info.connected || ''; return }
+      // Apply the configured defaults for a fresh new-thread.
+      const dAgent = ui?.default_agent
+      if (dAgent && ['pi', 'claude', 'codex'].includes(dAgent)) agent = dAgent
+      const dMachine = ui?.default_machine
+      machine = (dMachine && machines.includes(dMachine)) ? dMachine : (info.connected || '')
+    })
+  })
 
   async function create() {
     busy = true; err = null
