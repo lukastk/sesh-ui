@@ -20,6 +20,14 @@ const PARSERS = {
   },
   // claude: {type:"user"|"assistant", message:{role, content: string | [{type:"text",text}]}}
   claude(o) {
+    // A message SENT WHILE CLAUDE IS MID-TURN is queued, recorded as
+    // {type:"queue-operation", operation:"enqueue", content:"<text>"} — NOT a normal user
+    // turn (claude consumes the enqueue when it processes the message and writes no separate
+    // user entry). Without this, a queued send is invisible in the transcript view even though
+    // the agent received and answered it. Render the enqueue as the user's message.
+    if (o.type === 'queue-operation') {
+      return o.operation === 'enqueue' && typeof o.content === 'string' ? mk('user', o.content) : null
+    }
     if (o.type !== 'user' && o.type !== 'assistant') return null
     const content = o.message?.content
     if (typeof content === 'string') return mk(o.message.role, content)
