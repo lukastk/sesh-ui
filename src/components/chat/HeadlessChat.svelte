@@ -27,6 +27,13 @@
   let atBottom = $state(true)
   let scroller
   let loadedFor = null
+  // Progressive history: we fetch the last `tail` RAW transcript lines. Scrolling near the top grows
+  // `tail` and refetches (older messages prepended), keeping the default cheap and the prefetch light.
+  // `atTop` = the whole transcript is loaded (the daemon returned fewer lines than we asked for).
+  const TAIL_INITIAL = 300, TAIL_STEP = 1200
+  let tail = TAIL_INITIAL
+  let atTop = $state(false)
+  let loadingMore = $state(false)
   let turnModel = $state('')      // optional per-turn model override (headless only; pass-through)
   let attachments = $state([])    // {name, token} blobs referenced in the draft
   let uploading = $state(false)
@@ -63,23 +70,44 @@
 
   async function load() {
     try {
-      const t = await api.transcript(threadId, 300, machine)
-      msgs = parseTranscript(t.lines || [], agentKind)
+      const t = await api.transcript(threadId, tail, machine)
+      const raw = t.lines || []
+      atTop = raw.length < tail   // fewer lines than asked for ⇒ that's the whole transcript
+      msgs = parseTranscript(raw, agentKind)
       putCachedTranscript(threadId, msgs)
       loadErr = null
       await scrollDown()
     } catch (e) {
       // A thread that has never run a turn has no transcript yet — a LEGITIMATE empty state,
       // not a failure. Render it as empty; surface every other transcript error loudly.
-      if (/no transcript/i.test(String(e))) { msgs = []; loadErr = null; putCachedTranscript(threadId, []) }
+      if (/no transcript/i.test(String(e))) { msgs = []; loadErr = null; atTop = true; putCachedTranscript(threadId, []) }
       else loadErr = String(e)
     } finally {
       loading = false   // the initial fetch has resolved — "No transcript yet" is now truthful
     }
   }
+  // Scrolling near the top pulls in older history: grow the fetch window and refetch, then re-anchor
+  // the viewport to the same content (the new messages land ABOVE, so add the height delta to scrollTop)
+  // so the page doesn't jump. Guarded by `loadingMore` so a burst of scroll events fires it once.
+  async function loadMore() {
+    if (loadingMore || atTop || loading) return
+    loadingMore = true
+    const prevHeight = scroller?.scrollHeight ?? 0
+    const prevTop = scroller?.scrollTop ?? 0
+    tail += TAIL_STEP
+    try {
+      await load()
+      await tick()
+      if (scroller) scroller.scrollTop = prevTop + (scroller.scrollHeight - prevHeight)
+    } finally {
+      loadingMore = false
+    }
+  }
   function onScroll() {
     if (!scroller) return
     atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48
+    // Near the top → load older history (unless we've already got it all, or a send is in flight).
+    if (scroller.scrollTop < 80 && !atTop && !loadingMore && !loading && !sending) loadMore()
   }
   async function scrollDown(force = false) {
     if (!force && !atBottom) return   // user scrolled up — don't yank them down
@@ -126,6 +154,7 @@
   $effect(() => {
     if (threadId === loadedFor) return
     loadedFor = threadId
+    tail = TAIL_INITIAL; atTop = false; loadingMore = false   // reset the history window for the new thread
     // Show the prefetched transcript INSTANTLY if we have it, then refresh in the background. Only
     // when there's no cache do we enter the "Loading…" state for the initial fetch.
     const cached = getCachedTranscript(threadId)
@@ -142,7 +171,10 @@
   // (skip while a send is in flight so the optimistic bubble isn't clobbered mid-send).
   $effect(() => {
     if (!headful) return
-    const t = setInterval(() => { if (!sending) load() }, 2500)
+    // Only poll while pinned to the bottom (watching the live reply). If the user has scrolled UP to
+    // read history, skip the refetch — it would re-pull the (possibly large) grown window for nothing
+    // and risk disturbing their scroll. Polling resumes when they return to the bottom.
+    const t = setInterval(() => { if (!sending && atBottom) load() }, 2500)
     return () => clearInterval(t)
   })
 </script>
@@ -150,6 +182,7 @@
 <div class="chat">
   <div class="log" bind:this={scroller} onscroll={onScroll}>
     {#if loadErr}<div class="bubble error">{loadErr}</div>{/if}
+    {#if atTop && msgs.length}<div class="histtop">— beginning of conversation —</div>{/if}
     {#each msgs as m, i (i)}
       <div class="bubble {m.role}">
         {#if m.thinking}<div class="thinking">{m.thinking}</div>{/if}
@@ -162,6 +195,9 @@
       {:else}<div class="empty">{headful ? 'No transcript yet — send a message into the live pane below.' : 'No transcript yet — send a headless turn below.'}</div>{/if}
     {/if}
   </div>
+  {#if loadingMore}
+    <div class="loadtop">Loading earlier…</div>
+  {/if}
   {#if !atBottom}
     <button class="jump" onclick={() => scrollDown(true)} title="jump to latest">↓ latest</button>
   {/if}
@@ -205,6 +241,10 @@
   .bubble.error { align-self: center; background: #5a2030; color: #ffb4c0; font-size: 12px; }
   .pending { opacity: 0.6; font-style: italic; }
   .empty { color: #565f89; font-size: 13px; margin: auto; }
+  .histtop { align-self: center; color: #565f89; font-size: 11px; padding: 4px 0 2px; }
+  .loadtop { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
+    background: #232433; color: #9aa5ce; border: 1px solid #2a2b3d; border-radius: 14px;
+    padding: 4px 12px; font-size: 12px; box-shadow: 0 3px 12px rgba(0,0,0,0.5); }
   .thinking { opacity: 0.5; font-style: italic; font-size: 12px; margin-bottom: 6px;
     border-left: 2px solid #565f89; padding-left: 6px; }
   .composer-wrap { border-top: 1px solid #1f2030; background: #16161e; flex-shrink: 0; }
