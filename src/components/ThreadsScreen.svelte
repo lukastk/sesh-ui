@@ -20,19 +20,29 @@
   import ContextMenu from './ContextMenu.svelte'
   import { longpress } from '../lib/longpress.js'
   import { registerBack } from '../lib/back.js'
+  import { loadView, saveView, rememberScroll } from '../lib/viewstate.svelte.js'
+
+  // Restore the view we left this screen in (selection, surface mode, filter, toggles) — switching
+  // tabs unmounts this component, so without this re-entering Threads would open blank instead of
+  // back on the thread you were reading. (See viewstate.svelte.js.)
+  const _v = loadView('threads')
 
   // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
   // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
   let rows = $state(cacheGet('grid')?.data || [])
-  let selectedId = $state(null)
-  let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
-  let filter = $state('')
+  let selectedId = $state(_v.selectedId ?? null)
+  let mode = $state(_v.mode ?? 'auto')          // surface override: auto | rpc | terminal | headless
+  let filter = $state(_v.filter ?? '')
   let filterEl = $state(null)        // the filter <input> (cmd+f focuses it)
   let filterActive = $state(0)       // fzf: index of the highlighted candidate in `filtered`
-  let showArchived = $state(false)
+  let showArchived = $state(_v.showArchived ?? false)
   // Default ON: show the WHOLE mesh (matches `sesh tui`, whose wrapper adds --all-machines).
   // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
-  let showAllMachines = $state(true)
+  let showAllMachines = $state(_v.showAllMachines ?? true)
+
+  // Persist the view state on every change so leaving (unmount) and re-entering this screen lands
+  // back on the same thread + surface + filter.
+  $effect(() => { saveView('threads', { selectedId, mode, filter, showArchived, showAllMachines }) })
   let newParent = $state(undefined)  // undefined = modal closed; '' = root; id = child
   let forkTarget = $state(null)      // thread being forked (opens the modal in fork mode)
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
@@ -292,7 +302,7 @@
         ondragover={(e) => { e.preventDefault(); dropOn = '' }} ondragleave={() => (dropOn = null)}
         ondrop={(e) => { e.preventDefault(); onDropRow('') }} role="presentation">↥ drop here to make a root thread</div>
     {/if}
-    <div class="list" bind:this={listEl}>
+    <div class="list" bind:this={listEl} use:rememberScroll={'threads.list'}>
       {#each filtered as { row, depth, hasChildren, collapsed }, i (row.id)}
         <button class="row {selectedId === row.id ? 'sel' : ''}" class:fzactive={filter.trim() && i === activeIdx} class:dragging={dragId === row.id} class:dropover={dropOn === row.id}
           style="padding-left:{20 + depth * 16}px" onclick={() => select(row)}

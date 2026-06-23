@@ -7,6 +7,7 @@
   import { shortId } from '../lib/format.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { poll } from '../lib/connection.svelte.js'
+  import { rememberScroll } from '../lib/viewstate.svelte.js'
 
   let hooks = $state([])
   let subs = $state([])
@@ -49,7 +50,7 @@
   }
 </script>
 
-<div class="wrap">
+<div class="wrap" use:rememberScroll={'automation.wrap'}>
   <section class="panel">
     <div class="phead"><span class="h">Hooks</span><span class="sub">event → command, with mute &amp; synchronous test</span></div>
     {#if hooks.length === 0}

@@ -19,12 +19,23 @@
   import { longpress } from '../lib/longpress.js'
   import { dragscrollx } from '../lib/dragscrollx.js'
   import { registerBack } from '../lib/back.js'
+  import { loadView, saveView, rememberScroll } from '../lib/viewstate.svelte.js'
+
+  // Restore the view we left this screen in (open ticket + filters) — switching tabs unmounts this
+  // component, so without this re-entering Tickets opens blank instead of back on the ticket you had
+  // open. (See viewstate.svelte.js.)
+  const _v = loadView('tickets')
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
   let entries = $state(cacheGet('tickets')?.data || [])
   let unreachable = $state([])
   let sel = $state(null)             // open ticket (full record, from ticketGet)
   let selMachine = $state(null)      // the open ticket's owning machine (for set/move/etc.)
+  // Re-open the ticket we left selected (by id+machine; the full record is re-fetched). Fire-and-
+  // forget on mount — a since-deleted ticket just 404s into a toast and leaves the editor closed.
+  $effect(() => {
+    if (_v.selId) api.ticketGet(_v.selId, _v.selMachine).then((r) => { sel = r.ticket; selMachine = _v.selMachine }).catch(() => {})
+  })
   let bindFor = $state(null)         // {ticket, status} awaiting a thread binding
   let threadChoices = $state([])
   let findId = $state('')            // deep-link: find a ticket by id across the mesh
@@ -42,13 +53,17 @@
   let newNameEl = $state(null)
 
   // ── list filter (fzf) ──────────────────────────────────────────────────────
-  let filter = $state('')
+  let filter = $state(_v.filter ?? '')
   let filterEl = $state(null)
-  let fName = $state(true)            // match the name (default on)
-  let fPrompt = $state(false)         // match the prompt
-  let statusFilter = $state('all')    // 'all' | one of TICKET_STATUSES
+  let fName = $state(_v.fName ?? true)            // match the name (default on)
+  let fPrompt = $state(_v.fPrompt ?? false)       // match the prompt
+  let statusFilter = $state(_v.statusFilter ?? 'all')    // 'all' | one of TICKET_STATUSES
   let filterActive = $state(0)        // fzf highlighted candidate index
   let listEl = $state(null)
+
+  // Persist the view state (open ticket + filters) on every change so leaving and re-entering this
+  // screen restores it.
+  $effect(() => { saveView('tickets', { selId: sel?.id ?? null, selMachine, filter, fName, fPrompt, statusFilter }) })
 
   // sidebar width (drag-resizable, like Threads), persisted.
   let sidebarWidth = $state((() => { const v = Number(localStorage.getItem('seshui.ticketsSidebarW')); return v >= 220 && v <= 640 ? v : 340 })())
@@ -324,7 +339,7 @@
             </select>
           </div>
         </div>
-        <div class="list" bind:this={listEl}>
+        <div class="list" bind:this={listEl} use:rememberScroll={'tickets.list'}>
           {#each listed as e, i (e.ticket.id)}
             <button class="t-row" class:sel={sel?.id === e.ticket.id} class:fzactive={filter.trim() && i === activeIdx}
               onclick={() => open(e)} style="border-left-color:{TICKET_COLORS[e.ticket.status]}"
