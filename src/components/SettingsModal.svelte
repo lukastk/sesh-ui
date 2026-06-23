@@ -7,6 +7,7 @@
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { startTranscriptPrefetch } from '../lib/transcriptCache.js'
   import { KEYMAP_DEFS, keymap, setBinding, resetBinding, resetAllBindings, fmtCombo, comboFromEvent } from '../lib/keymap.svelte.js'
+  import { prefs, setPref } from '../lib/uiprefs.svelte.js'
 
   let { onclose } = $props()
 
@@ -273,6 +274,14 @@
     {:else}
       <p class="note">loading…</p>
     {/if}
+
+    <hr class="sep" />
+    <h3>Input</h3>
+    <label class="check">
+      <input type="checkbox" checked={prefs.composerAutofocus} onchange={(e) => setPref('composerAutofocus', e.currentTarget.checked)} />
+      Auto-focus the chat input when a thread opens
+    </label>
+    <p class="note">When off, opening a thread won't pop the on-screen keyboard (or grab the cursor) — tap the input to start typing. Defaults off on mobile, on elsewhere. Stored locally on this device.</p>
 
     <hr class="sep" />
     <div class="km-head">

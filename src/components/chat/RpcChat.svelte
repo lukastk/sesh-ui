@@ -13,6 +13,7 @@
   import { parseTranscript } from '../../lib/transcript.js'
   import { getCachedTranscript, putCachedTranscript } from '../../lib/transcriptCache.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
+  import { prefs } from '../../lib/uiprefs.svelte.js'
   import Markdown from '../Markdown.svelte'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
@@ -51,7 +52,9 @@
   let draft = $state('')
   let composerEl = $state(null) // the message textarea — auto-focused on mount (entering this view)
   // Focus the composer when the view mounts so you can type immediately on opening/switching threads.
-  $effect(() => { composerEl?.focus() })
+  // Gated by the composerAutofocus pref (default OFF on Android) so opening a thread doesn't pop the
+  // soft keyboard before you've chosen to type — there you focus by tapping the field.
+  $effect(() => { if (prefs.composerAutofocus) composerEl?.focus() })
   let state = $state('connecting…')
   let currentModel = $state(null) // live model from state.config.model (Phase 2 reflects set_model)
   let modelDraft = $state('')     // the live-switch input

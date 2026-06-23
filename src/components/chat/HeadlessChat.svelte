@@ -9,6 +9,7 @@
   import { getCachedTranscript, putCachedTranscript } from '../../lib/transcriptCache.js'
   import { uploadBlob } from '../../lib/blobs.js'
   import { modelSuggestions } from '../../lib/models.js'
+  import { prefs } from '../../lib/uiprefs.svelte.js'
   import Markdown from '../Markdown.svelte'
 
   // headful: this thread has a LIVE pane (claude/codex viewed in transcript mode) — the composer
@@ -42,7 +43,9 @@
 
   // Focus the composer as soon as the view mounts, so opening a thread / entering Transcript mode
   // lets you type immediately (the surface is keyed per thread+view, so this fires on each switch).
-  $effect(() => { composerEl?.focus() })
+  // Gated by the composerAutofocus pref (default OFF on Android) so opening a thread doesn't yank the
+  // soft keyboard up before you've chosen to type — there you focus by tapping the field.
+  $effect(() => { if (prefs.composerAutofocus) composerEl?.focus() })
 
   // Upload files to the thread's owning blob store and drop an @blob(hash) token into the draft.
   async function attachFiles(files) {
