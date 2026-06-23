@@ -297,7 +297,10 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 90; }
-  .modal { background: #16161e; border: 1px solid #2a2b3d; border-radius: 12px; padding: 20px 22px; width: 420px; max-width: 92vw; display: flex; flex-direction: column; gap: 12px; }
+  .modal { background: #16161e; border: 1px solid #2a2b3d; border-radius: 12px; padding: 20px 22px; width: 420px; max-width: 92vw; display: flex; flex-direction: column; gap: 12px;
+    /* The settings panel (Connection + UI config + cwd roots/labels + keyboard shortcuts) is taller
+       than the viewport — cap it and scroll internally, or the bottom rows are unreachable. */
+    max-height: 90vh; overflow-y: auto; }
   h3 { margin: 0 0 2px; font-size: 16px; }
   h3 .sub { font-size: 11px; color: #565f89; font-weight: 400; }
   .sep { width: 100%; border: 0; border-top: 1px solid #1f2030; margin: 4px 0; }
