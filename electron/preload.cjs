@@ -26,4 +26,6 @@ contextBridge.exposeInMainWorld('sesh', {
   peerInfo: () => ipcRenderer.invoke('sesh:peer-info'),
   getConfig: () => ipcRenderer.invoke('sesh:get-config'),
   setConfig: (cfg) => ipcRenderer.invoke('sesh:set-config', cfg),
+  // Open a URL in the OS default browser (external links must never navigate the app window).
+  openExternal: (url) => ipcRenderer.invoke('sesh:open-external', url),
 })

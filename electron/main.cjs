@@ -5,7 +5,7 @@
 // rpc/terminal WebSockets. The bearer token lives ONLY in main (encrypted at rest via
 // safeStorage) — never in the renderer, for http OR ws. A local unix-socket daemon needs no
 // token (local trust). See electron/transport.cjs and electron/config.cjs.
-const { app, BrowserWindow, ipcMain, safeStorage } = require('electron')
+const { app, BrowserWindow, ipcMain, safeStorage, shell } = require('electron')
 const path = require('node:path')
 const transport = require('./transport.cjs')
 const { peerConfig, peerMachines } = require('./peers.cjs')
@@ -41,9 +41,29 @@ function createWindow() {
     backgroundColor: '#11121a',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false },
   })
+  openExternalLinks(win.webContents)
   const url = process.env.SESH_UI_DEV_URL
   if (url) win.loadURL(url)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+}
+
+// External links (markdown bubbles, anywhere) must open in the user's DEFAULT browser — never
+// navigate/replace the app window (a bare <a href> click would otherwise load the URL INTO the
+// BrowserWindow, blowing away the app). The renderer's capture-phase handler (src/lib/links.js) is
+// the primary path; this is the backstop that catches anything it misses (window.open, modifier-
+// clicks). Only http(s) is externalized — the app's own file:// / dev-server nav is left alone.
+function openExternalLinks(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (e, url) => {
+    if (!/^https?:\/\//i.test(url)) return
+    const devURL = process.env.SESH_UI_DEV_URL
+    if (devURL && url.startsWith(new URL(devURL).origin)) return // the dev server itself — real app nav
+    e.preventDefault()
+    shell.openExternal(url)
+  })
 }
 
 // ── IPC: the seam the renderer's seshClient talks to ──
@@ -69,6 +89,8 @@ ipcMain.handle('sesh:get', (_e, p, machine) => doRequest(p, 'GET', undefined, ma
 ipcMain.handle('sesh:post', (_e, p, body, machine) => doRequest(p, 'POST', body, machine))
 // Peer info for the renderer: which machine we're connected to + the machines we can dial for chat.
 ipcMain.handle('sesh:peer-info', () => ({ connected: connectedMachine, peers: peerMachines() }))
+// Open a URL in the user's default browser (the renderer routes external link clicks here).
+ipcMain.handle('sesh:open-external', (_e, url) => { if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url) })
 // WS base — synchronous so seshClient.wsURL() can stay synchronous (new WebSocket(url)).
 ipcMain.on('sesh:ws-base', (e) => { e.returnValue = bridge ? bridge.base : '' })
 // Settings — read the token-free config view; write a new endpoint (token encrypted in main).

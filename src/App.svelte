@@ -11,6 +11,7 @@
   import { matchAction } from './lib/keymap.svelte.js'
   import { pinch } from './lib/pinch.js'
   import { registerBack, runBack } from './lib/back.js'
+  import { installExternalLinkHandler } from './lib/links.js'
   import { App as CapApp } from '@capacitor/app'
   import { ago } from './lib/format.js'
   import ThreadsScreen from './components/ThreadsScreen.svelte'
@@ -42,6 +43,9 @@
     }
   }
   $effect(() => { pollStatus(); const t = setInterval(pollStatus, 4000); return () => clearInterval(t) })
+
+  // External links must open in the OS default browser, never navigate the app's own webview.
+  $effect(() => installExternalLinkHandler())
 
   // Background transcript prefetch: read the interval from the daemon's ui_config (schema ≥27,
   // default 10s, 0=off) once on load and start the loop so opening any thread's transcript is
