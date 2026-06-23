@@ -8,6 +8,7 @@
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
   import { registerBack } from '../lib/back.js'
+  import { rememberScroll } from '../lib/viewstate.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
   // Seed from the offline cache (Android) so a cold offline start shows the last-known mesh.
@@ -94,7 +95,7 @@
     {/if}
   </div>
 
-  <div class="grid">
+  <div class="grid" use:rememberScroll={'machines.grid'}>
     {#each machines as m (m.machine)}
       <div class="card {m.reachable ? '' : 'offline'}">
         <div class="c-head">

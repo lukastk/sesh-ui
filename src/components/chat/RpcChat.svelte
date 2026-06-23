@@ -13,7 +13,9 @@
   import { parseTranscript } from '../../lib/transcript.js'
   import { getCachedTranscript, putCachedTranscript } from '../../lib/transcriptCache.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
+  import { prefs } from '../../lib/uiprefs.svelte.js'
   import Markdown from '../Markdown.svelte'
+  import PromptFullscreen from './PromptFullscreen.svelte'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
 
@@ -50,8 +52,11 @@
   let live = $state([])        // in-flight UI-turn overlay: user + streaming assistant + tool bubbles
   let draft = $state('')
   let composerEl = $state(null) // the message textarea — auto-focused on mount (entering this view)
+  let expanded = $state(false)  // fullscreen prompt editor open?
   // Focus the composer when the view mounts so you can type immediately on opening/switching threads.
-  $effect(() => { composerEl?.focus() })
+  // Gated by the composerAutofocus pref (default OFF on Android) so opening a thread doesn't pop the
+  // soft keyboard before you've chosen to type — there you focus by tapping the field.
+  $effect(() => { if (prefs.composerAutofocus) composerEl?.focus() })
   let state = $state('connecting…')
   let currentModel = $state(null) // live model from state.config.model (Phase 2 reflects set_model)
   let modelDraft = $state('')     // the live-switch input
@@ -211,10 +216,16 @@
     <div class="composer">
       <textarea bind:this={composerEl} bind:value={draft} rows="1" placeholder="Message the pi agent (streams over RPC) — Enter to send · drop/paste a file to attach its path" onkeydown={onkey} onpaste={onPaste}></textarea>
       <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
+      <button class="expand" onclick={() => (expanded = true)} title="expand to fullscreen editor">⤢</button>
       <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image (inserts its path)">{uploading ? '…' : '📎'}</button>
       <button onclick={send}>Send</button>
     </div>
   </div>
+  {#if expanded}
+    <PromptFullscreen bind:value={draft} accent="#e0af68"
+      placeholder="Message the pi agent (streams over RPC)…"
+      onclose={() => (expanded = false)} onsend={() => { expanded = false; send() }} />
+  {/if}
 </div>
 
 <style>
@@ -255,6 +266,8 @@
     border-radius: 8px; padding: 9px; font-size: 14px; font-family: inherit; line-height: 1.4; max-height: 140px; }
   .attach { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; min-width: 44px; font-size: 15px; }
   .attach:disabled { opacity: 0.5; }
+  .expand { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; min-width: 44px; font-size: 15px; }
+  .expand:hover { background: #232433; }
   button { background: #e0af68; color: #16161e; border: 0; border-radius: 8px; padding: 0 16px;
     font-weight: 600; cursor: pointer; }
 </style>

@@ -22,21 +22,32 @@
   import ContextMenu from './ContextMenu.svelte'
   import { longpress } from '../lib/longpress.js'
   import { registerBack } from '../lib/back.js'
+  import { loadView, saveView, rememberScroll } from '../lib/viewstate.svelte.js'
+
+  // Restore the view we left this screen in (selection, surface mode, filter, toggles) — switching
+  // tabs unmounts this component, so without this re-entering Threads would open blank instead of
+  // back on the thread you were reading. (See viewstate.svelte.js.)
+  const _v = loadView('threads')
 
   // Seed for an INSTANT first paint: the warm in-memory cache (kept fresh by App's background
   // prefetch, all transports) first, then the Android offline localStorage snapshot. Either avoids
   // an empty pane while the first live poll lands; '' falls through to a one-time skeleton.
+  // selection/surface/filter restore from the view we left this screen in (viewstate).
   let rows = $state(warm.grid || cacheGet('grid')?.data || [])
   let loadedOnce = $state(warm.grid != null)   // false → genuine cold start (show skeleton)
-  let selectedId = $state(null)
-  let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
-  let filter = $state('')
+  let selectedId = $state(_v.selectedId ?? null)
+  let mode = $state(_v.mode ?? 'auto')          // surface override: auto | rpc | terminal | headless
+  let filter = $state(_v.filter ?? '')
   let filterEl = $state(null)        // the filter <input> (cmd+f focuses it)
   let filterActive = $state(0)       // fzf: index of the highlighted candidate in `filtered`
-  let showArchived = $state(false)
+  let showArchived = $state(_v.showArchived ?? false)
   // Default ON: show the WHOLE mesh (matches `sesh tui`, whose wrapper adds --all-machines).
   // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
-  let showAllMachines = $state(true)
+  let showAllMachines = $state(_v.showAllMachines ?? true)
+
+  // Persist the view state on every change so leaving (unmount) and re-entering this screen lands
+  // back on the same thread + surface + filter (machine filter + active view persist on their own).
+  $effect(() => { saveView('threads', { selectedId, mode, filter, showArchived, showAllMachines }) })
 
   // ── machine filter: a SET of machines to INCLUDE (empty = all). Persisted. Most useful with
   // all-machines on (the mesh is visible). The available machines are derived live from the grid.
@@ -58,7 +69,7 @@
   }
   function newView() { editingView = { name: '', filter: '', original: '' } }
   function editView(v) { editingView = { name: v.name, filter: v.filter, original: v.name } }
-  function saveView() {
+  function commitView() {
     const e = editingView, name = e.name.trim()
     if (!name) { pushError('view needs a name'); return }
     const c = compileView(e.filter)
@@ -391,7 +402,7 @@
         ondragover={(e) => { e.preventDefault(); dropOn = '' }} ondragleave={() => (dropOn = null)}
         ondrop={(e) => { e.preventDefault(); onDropRow('') }} role="presentation">↥ drop here to make a root thread</div>
     {/if}
-    <div class="list" bind:this={listEl}>
+    <div class="list" bind:this={listEl} use:rememberScroll={'threads.list'}>
       {#each filtered as { row, depth, hasChildren, collapsed }, i (row.id)}
         <button class="row {selectedId === row.id ? 'sel' : ''}" class:fzactive={filter.trim() && i === activeIdx} class:dragging={dragId === row.id} class:dropover={dropOn === row.id}
           style="padding-left:{20 + depth * 16}px" onclick={() => select(row)}
@@ -554,7 +565,7 @@
           {#if editingView.original}<button class="danger" onclick={() => deleteView(editingView.original)}>Delete</button>{/if}
           <div class="spacer"></div>
           <button onclick={() => (editingView = null)}>Cancel</button>
-          <button class="primary" onclick={saveView}>Save</button>
+          <button class="primary" onclick={commitView}>Save</button>
         </div>
       </div>
     </div>
