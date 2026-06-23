@@ -7,6 +7,7 @@
   import { conn, noteOk, noteFail } from './lib/connection.svelte.js'
   import { cacheGet } from './lib/snapshot.svelte.js'
   import { startTranscriptPrefetch, stopTranscriptPrefetch } from './lib/transcriptCache.js'
+  import { startListPrefetch, stopListPrefetch } from './lib/listcache.svelte.js'
   import { fontScale, bumpScale, resetScale, setScale } from './lib/fontscale.svelte.js'
   import { matchAction } from './lib/keymap.svelte.js'
   import { pinch } from './lib/pinch.js'
@@ -54,6 +55,11 @@
       .catch(() => {})   // daemon unreachable on first load — pollStatus drives the retry/banner
     return () => { cancelled = true; stopTranscriptPrefetch() }
   })
+
+  // Background list prefetch: keep the threads grid + tickets list warm in memory so switching to
+  // either tab paints the last-known list instantly instead of an empty pane waiting on the first
+  // poll. Independent of the per-screen polls (it skips when a mounted screen refreshed recently).
+  $effect(() => { startListPrefetch(8); return () => stopListPrefetch() })
 
   // Apply the app-wide UI scale (reactive): a CSS var consumed by `.app { zoom: var(--font-scale) }`.
   $effect(() => { document.documentElement.style.setProperty('--font-scale', String(fontScale.scale)) })

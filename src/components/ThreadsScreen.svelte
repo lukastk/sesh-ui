@@ -11,6 +11,7 @@
   import { poll, conn } from '../lib/connection.svelte.js'
   import { copyText } from '../lib/clipboard.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
+  import { warm, setGrid } from '../lib/listcache.svelte.js'
   import RpcChat from './chat/RpcChat.svelte'
   import Terminal from './chat/Terminal.svelte'
   import HeadlessChat from './chat/HeadlessChat.svelte'
@@ -21,9 +22,11 @@
   import { longpress } from '../lib/longpress.js'
   import { registerBack } from '../lib/back.js'
 
-  // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
-  // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
-  let rows = $state(cacheGet('grid')?.data || [])
+  // Seed for an INSTANT first paint: the warm in-memory cache (kept fresh by App's background
+  // prefetch, all transports) first, then the Android offline localStorage snapshot. Either avoids
+  // an empty pane while the first live poll lands; '' falls through to a one-time skeleton.
+  let rows = $state(warm.grid || cacheGet('grid')?.data || [])
+  let loadedOnce = $state(warm.grid != null)   // false → genuine cold start (show skeleton)
   let selectedId = $state(null)
   let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
   let filter = $state('')
@@ -59,8 +62,14 @@
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
     // never a per-tick toast. On failure keep the last-known rows rather than blanking.
-    try { rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || []; cacheSet('grid', rows) }
-    catch {}
+    try {
+      rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || []
+      loadedOnce = true
+      cacheSet('grid', rows)
+      // Keep the warm cache fresh — but only for the DEFAULT view (archived off, all machines on),
+      // so a filtered/archived fetch never becomes the "instant paint" the next tab open inherits.
+      if (!showArchived && showAllMachines) setGrid(rows)
+    } catch {}
   }
   $effect(() => { showArchived; showAllMachines; refresh() })   // immediate refetch when a toggle flips
   $effect(() => { const t = setInterval(refresh, 2500); return () => clearInterval(t) })
@@ -319,7 +328,13 @@
           </span>
         </button>
       {/each}
-      {#if filtered.length === 0}<div class="empty">{filter ? 'no matches' : 'no threads — click “+ New”.'}</div>{/if}
+      {#if filtered.length === 0}
+        {#if !loadedOnce && !filter}
+          {#each Array(6) as _}<div class="skel-row"><span class="skel-g"></span><span class="skel-nm"></span></div>{/each}
+        {:else}
+          <div class="empty">{filter ? 'no matches' : 'no threads — click “+ New”.'}</div>
+        {/if}
+      {/if}
     </div>
   </aside>
 
@@ -486,6 +501,13 @@
   .row .tkt { color: #e0af68; }
   .row .tkt.needs { color: #f7768e; }
   .empty, .placeholder { color: #565f89; padding: 20px; }
+  /* Cold-start skeleton (first ever load, no warm cache) — a few shimmering placeholder rows so the
+     pane reads as "loading" rather than "empty/broken". */
+  .skel-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+  .skel-g, .skel-nm { background: #1a1b26; border-radius: 5px; animation: skel 1.2s ease-in-out infinite; }
+  .skel-g { width: 14px; height: 14px; border-radius: 50%; }
+  .skel-nm { height: 11px; flex: 1; max-width: 70%; }
+  @keyframes skel { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.85; } }
   /* min-height:0 is load-bearing: without it this grid item grows to its content height (a long
      transcript) and overflows the page instead of letting .surface/.log scroll internally. */
   main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }

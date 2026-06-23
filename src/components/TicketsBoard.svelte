@@ -14,14 +14,17 @@
   import { poll } from '../lib/connection.svelte.js'
   import { copyText } from '../lib/clipboard.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
+  import { warm, setTickets } from '../lib/listcache.svelte.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import { longpress } from '../lib/longpress.js'
   import { dragscrollx } from '../lib/dragscrollx.js'
   import { registerBack } from '../lib/back.js'
 
-  // Seed from the offline cache (Android) so a cold offline start shows the last-known tickets.
-  let entries = $state(cacheGet('tickets')?.data || [])
+  // Seed for an INSTANT first paint: the warm in-memory cache (App's background prefetch, all
+  // transports) first, then the Android offline localStorage snapshot. '' falls through to a skeleton.
+  let entries = $state(warm.tickets || cacheGet('tickets')?.data || [])
+  let loadedOnce = $state(warm.tickets != null)   // false → genuine cold start (show skeleton)
   let unreachable = $state([])
   let sel = $state(null)             // open ticket (full record, from ticketGet)
   let selMachine = $state(null)      // the open ticket's owning machine (for set/move/etc.)
@@ -70,7 +73,9 @@
       const r = await poll(api.ticketsAll())
       entries = r.tickets || []
       unreachable = r.unreachable || []
+      loadedOnce = true
       cacheSet('tickets', entries)
+      setTickets(entries, unreachable)   // keep the warm cache fresh for an instant next tab open
       // Reflect EXTERNAL status/binding changes in the open ticket, but NEVER clobber the fields the
       // user may be editing (name/prompt/notes) — only status + thread_id are merged.
       if (sel) {
