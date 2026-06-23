@@ -71,7 +71,12 @@
       ...patch,
     }
     try {
-      const r = await api.uiConfigSet(next); uiCfg = r.ui_config; pushInfo('UI config saved')
+      // next embeds uiCfg.cwd_roots / cwd_labels, which are Svelte $state PROXIES (uiCfg is $state,
+      // and nested arrays/objects are deeply proxied). The Electron transport (window.sesh.post →
+      // contextBridge) structured-clones the body, and a Proxy is not cloneable → "An object could
+      // not be cloned." Snapshot to a plain deep clone before it crosses the IPC boundary. (Web mode
+      // JSON-stringifies, so this only bit the Electron app.)
+      const r = await api.uiConfigSet($state.snapshot(next)); uiCfg = r.ui_config; pushInfo('UI config saved')
       startTranscriptPrefetch(uiCfg.transcript_prefetch_secs ?? 10)   // apply a changed interval live
     }
     catch (e) { pushError(`ui-config: ${e.message ?? e}`); uiCfg = { ...uiCfg } } // revert the controls
