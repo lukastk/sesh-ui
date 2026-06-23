@@ -4,6 +4,7 @@
   // Lifecycle verbs emit through seshClient; their failures go to the loud global toast store,
   // kept separate from the live-poll model so a poll tick never wipes an action error.
   import { api, sesh } from '../lib/seshClient.js'
+  import { compileView, DEFAULT_VIEWS } from '../lib/threadView.js'
   import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { fuzzyScore } from '../lib/fuzzy.js'
   import { matchAction } from '../lib/keymap.svelte.js'
@@ -11,6 +12,7 @@
   import { poll, conn } from '../lib/connection.svelte.js'
   import { copyText } from '../lib/clipboard.js'
   import { cacheSet, cacheGet } from '../lib/snapshot.svelte.js'
+  import { warm, setGrid } from '../lib/listcache.svelte.js'
   import RpcChat from './chat/RpcChat.svelte'
   import Terminal from './chat/Terminal.svelte'
   import HeadlessChat from './chat/HeadlessChat.svelte'
@@ -21,9 +23,11 @@
   import { longpress } from '../lib/longpress.js'
   import { registerBack } from '../lib/back.js'
 
-  // Seed from the offline cache (Android) so a cold start with no connectivity shows last-known
-  // threads immediately, behind the loud offline banner; '' off Android (cacheGet is a no-op there).
-  let rows = $state(cacheGet('grid')?.data || [])
+  // Seed for an INSTANT first paint: the warm in-memory cache (kept fresh by App's background
+  // prefetch, all transports) first, then the Android offline localStorage snapshot. Either avoids
+  // an empty pane while the first live poll lands; '' falls through to a one-time skeleton.
+  let rows = $state(warm.grid || cacheGet('grid')?.data || [])
+  let loadedOnce = $state(warm.grid != null)   // false → genuine cold start (show skeleton)
   let selectedId = $state(null)
   let mode = $state('auto')          // surface override: auto | rpc | terminal | headless
   let filter = $state('')
@@ -33,6 +37,70 @@
   // Default ON: show the WHOLE mesh (matches `sesh tui`, whose wrapper adds --all-machines).
   // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
   let showAllMachines = $state(true)
+
+  // ── machine filter: a SET of machines to INCLUDE (empty = all). Persisted. Most useful with
+  // all-machines on (the mesh is visible). The available machines are derived live from the grid.
+  let machineFilter = $state(loadSet('seshui.threadMachines'))
+  function loadSet(key) { try { const r = JSON.parse(localStorage.getItem(key)); if (Array.isArray(r)) return new Set(r) } catch {} return new Set() }
+  function persistMachines(n) { machineFilter = n; try { localStorage.setItem('seshui.threadMachines', JSON.stringify([...n])) } catch {} }
+  function toggleMachine(m) { const n = new Set(machineFilter); n.has(m) ? n.delete(m) : n.add(m); persistMachines(n) }
+  function clearMachines() { persistMachines(new Set()) }
+
+  // ── views: saved predicate filters (the `[[tui.views]]` concept). Defined/persisted in the UI
+  // since the daemon doesn't expose config.toml. `activeView` is the applied one (null = none).
+  let views = $state((() => { try { const r = JSON.parse(localStorage.getItem('seshui.threadViews')); if (Array.isArray(r) && r.length) return r } catch {} return [...DEFAULT_VIEWS] })())
+  let activeView = $state(localStorage.getItem('seshui.threadView') || null)
+  let editingView = $state(null)   // { name, filter, original } | null  (original = '' for a new view)
+  function saveViews() { try { localStorage.setItem('seshui.threadViews', JSON.stringify(views)) } catch {} }
+  function setActiveView(name) {
+    activeView = activeView === name ? null : name
+    try { activeView ? localStorage.setItem('seshui.threadView', activeView) : localStorage.removeItem('seshui.threadView') } catch {}
+  }
+  function newView() { editingView = { name: '', filter: '', original: '' } }
+  function editView(v) { editingView = { name: v.name, filter: v.filter, original: v.name } }
+  function saveView() {
+    const e = editingView, name = e.name.trim()
+    if (!name) { pushError('view needs a name'); return }
+    const c = compileView(e.filter)
+    if (!c.ok) { pushError(`view filter invalid: ${c.error}`); return }
+    views = [...views.filter((v) => v.name !== e.original && v.name !== name), { name, filter: e.filter.trim() }]
+    saveViews()
+    activeView = name
+    try { localStorage.setItem('seshui.threadView', name) } catch {}
+    editingView = null
+  }
+  function deleteView(name) {
+    views = views.filter((v) => v.name !== name); saveViews()
+    if (activeView === name) setActiveView(name)   // toggles it off
+    editingView = null
+  }
+  // Live compile of the active view; an invalid saved filter surfaces loudly and applies no filter.
+  let compiledView = $derived.by(() => {
+    if (!activeView) return null
+    const v = views.find((x) => x.name === activeView)
+    return v ? { name: v.name, ...compileView(v.filter) } : null
+  })
+  $effect(() => { if (compiledView && !compiledView.ok) pushError(`view "${compiledView.name}" filter invalid: ${compiledView.error}`) })
+  // Live preview (match count / error) for the view editor.
+  let editPreview = $derived.by(() => {
+    if (!editingView) return null
+    const c = compileView(editingView.filter)
+    if (!c.ok) return { error: c.error }
+    let n = 0; for (const r of rows) { try { if (c.fn(r)) n++ } catch {} }
+    return { count: n }
+  })
+
+  // Machines present in the live grid (for the filter chips).
+  let machines = $derived([...new Set(rows.map((r) => r.machine).filter(Boolean))].sort())
+  // Rows after the machine filter + active view predicate — the tree is built from THIS (filtering a
+  // parent out just promotes its children to roots, which the tree walk already handles).
+  let visibleRows = $derived.by(() => {
+    let rs = rows
+    if (machineFilter.size) rs = rs.filter((r) => machineFilter.has(r.machine))
+    const cv = compiledView
+    if (cv && cv.ok) rs = rs.filter((r) => { try { return cv.fn(r) } catch { return true } })
+    return rs
+  })
   let newParent = $state(undefined)  // undefined = modal closed; '' = root; id = child
   let forkTarget = $state(null)      // thread being forked (opens the modal in fork mode)
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
@@ -59,8 +127,14 @@
   async function refresh() {
     // Background poll: report reachability to the shared connection store (→ one banner),
     // never a per-tick toast. On failure keep the last-known rows rather than blanking.
-    try { rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || []; cacheSet('grid', rows) }
-    catch {}
+    try {
+      rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || []
+      loadedOnce = true
+      cacheSet('grid', rows)
+      // Keep the warm cache fresh — but only for the DEFAULT view (archived off, all machines on),
+      // so a filtered/archived fetch never becomes the "instant paint" the next tab open inherits.
+      if (!showArchived && showAllMachines) setGrid(rows)
+    } catch {}
   }
   $effect(() => { showArchived; showAllMachines; refresh() })   // immediate refetch when a toggle flips
   $effect(() => { const t = setInterval(refresh, 2500); return () => clearInterval(t) })
@@ -84,10 +158,10 @@
   // Build the flattened, depth-annotated tree for display (DFS from roots; a row whose parent
   // isn't in the current set is treated as a root so nothing is orphaned out of view).
   let tree = $derived.by(() => {
-    const ids = new Set(rows.map((r) => r.id))
+    const ids = new Set(visibleRows.map((r) => r.id))
     const children = new Map()
     const roots = []
-    for (const r of rows) {
+    for (const r of visibleRows) {
       const p = r.parent && ids.has(r.parent) ? r.parent : null
       if (p) { (children.get(p) ?? children.set(p, []).get(p)).push(r) }
       else roots.push(r)
@@ -225,6 +299,7 @@
   // back; false (nothing open, no selection) lets App fall through to exit.
   $effect(() => registerBack(() => {
     if (ctxMenu) { ctxMenu = null; return true }
+    if (editingView) { editingView = null; return true }
     if (reparentPick) { reparentPick = false; return true }
     if (deleteTarget) { deleteTarget = null; return true }
     if (renameTarget) { renameTarget = null; return true }
@@ -287,6 +362,24 @@
       <label class="arch"><input type="checkbox" bind:checked={showArchived} /> archived</label>
       <label class="arch" title="show threads from every machine in the mesh (like sesh tui)"><input type="checkbox" bind:checked={showAllMachines} /> all&nbsp;machines</label>
     </div>
+    {#if machines.length > 1}
+      <div class="subbar">
+        <span class="sb-label">machines</span>
+        {#each machines as m (m)}
+          <button class="chip" class:on={machineFilter.has(m)} onclick={() => toggleMachine(m)}
+            title={machineFilter.size ? (machineFilter.has(m) ? 'shown — click to hide' : 'hidden — click to show') : 'showing all — click to show only this'}>{m}</button>
+        {/each}
+        {#if machineFilter.size}<button class="chip clear" onclick={clearMachines} title="show all machines">✕</button>{/if}
+      </div>
+    {/if}
+    <div class="subbar">
+      <span class="sb-label" title="saved predicate filters — the sesh tui [[tui.views]] concept">views</span>
+      {#each views as v (v.name)}
+        <button class="chip view" class:on={activeView === v.name} onclick={() => setActiveView(v.name)}
+          oncontextmenu={(e) => { e.preventDefault(); editView(v) }} title={`${v.filter}\n(right-click to edit)`}>{v.name}</button>
+      {/each}
+      <button class="chip add" onclick={newView} title="add a view">＋</button>
+    </div>
     {#if dragId}
       <div class="root-drop" class:over={dropOn === ''}
         ondragover={(e) => { e.preventDefault(); dropOn = '' }} ondragleave={() => (dropOn = null)}
@@ -319,7 +412,13 @@
           </span>
         </button>
       {/each}
-      {#if filtered.length === 0}<div class="empty">{filter ? 'no matches' : 'no threads — click “+ New”.'}</div>{/if}
+      {#if filtered.length === 0}
+        {#if !loadedOnce && !filter}
+          {#each Array(6) as _}<div class="skel-row"><span class="skel-g"></span><span class="skel-nm"></span></div>{/each}
+        {:else}
+          <div class="empty">{filter ? 'no matches' : 'no threads — click “+ New”.'}</div>
+        {/if}
+      {/if}
     </div>
   </aside>
 
@@ -429,6 +528,32 @@
     </div>
   {/if}
 
+  {#if editingView}
+    <div class="backdrop" onclick={() => (editingView = null)} role="presentation">
+      <div class="rp viewed" onclick={(e) => e.stopPropagation()} role="dialog">
+        <h3>{editingView.original ? 'Edit view' : 'New view'}</h3>
+        <label class="vlabel">Name<input class="vinput" bind:value={editingView.name} placeholder="view name" /></label>
+        <label class="vlabel">Filter
+          <textarea class="vfilter" bind:value={editingView.filter} placeholder="e.g. ticketed and not archived"></textarea>
+        </label>
+        <div class="vhint">
+          atoms: headful headless busy idle attached detached archived ticketed ·
+          fields: agent machine name cwd id tags head busy (= != ~ !~) · and / or / not / ( )
+        </div>
+        {#if editPreview}
+          {#if editPreview.error}<div class="vpreview err">✕ {editPreview.error}</div>
+          {:else}<div class="vpreview ok">✓ matches {editPreview.count} thread{editPreview.count === 1 ? '' : 's'}</div>{/if}
+        {/if}
+        <div class="rpfoot vfoot">
+          {#if editingView.original}<button class="danger" onclick={() => deleteView(editingView.original)}>Delete</button>{/if}
+          <div class="spacer"></div>
+          <button onclick={() => (editingView = null)}>Cancel</button>
+          <button class="primary" onclick={saveView}>Save</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   {#if renameTarget}
     <PromptDialog title="Rename thread" label="Name" value={renameTarget.name || ''}
       placeholder="(nameless)" confirmLabel="Rename"
@@ -460,6 +585,16 @@
   .filter { flex: 1; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px;
     padding: 6px 9px; font-size: 12px; }
   .arch { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #9aa5ce; white-space: nowrap; }
+  /* machine-filter + views sub-bars: wrapping chip rows under the main controls. */
+  .subbar { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 0 12px 8px; }
+  .sb-label { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em; }
+  .chip { background: #1a1b26; color: #9aa5ce; border: 1px solid #2a2b3d; border-radius: 12px;
+    padding: 2px 9px; font-size: 11px; cursor: pointer; }
+  .chip:hover { background: #232433; }
+  .chip.on { background: #1c2438; color: #7dcfff; border-color: #2a3a5a; font-weight: 600; }
+  .chip.view.on { background: #1c2a1d; color: #9ece6a; border-color: #2f5a30; }
+  .chip.add { color: #565f89; font-weight: 700; }
+  .chip.clear { color: #565f89; }
   .list { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
   .row { position: relative; width: 100%; text-align: left; display: grid; grid-template-columns: 22px 1fr auto;
     gap: 2px 8px; align-items: center; background: none; border: 0; color: inherit; padding: 9px 14px;
@@ -486,6 +621,13 @@
   .row .tkt { color: #e0af68; }
   .row .tkt.needs { color: #f7768e; }
   .empty, .placeholder { color: #565f89; padding: 20px; }
+  /* Cold-start skeleton (first ever load, no warm cache) — a few shimmering placeholder rows so the
+     pane reads as "loading" rather than "empty/broken". */
+  .skel-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+  .skel-g, .skel-nm { background: #1a1b26; border-radius: 5px; animation: skel 1.2s ease-in-out infinite; }
+  .skel-g { width: 14px; height: 14px; border-radius: 50%; }
+  .skel-nm { height: 11px; flex: 1; max-width: 70%; }
+  @keyframes skel { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.85; } }
   /* min-height:0 is load-bearing: without it this grid item grows to its content height (a long
      transcript) and overflows the page instead of letting .surface/.log scroll internally. */
   main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -539,6 +681,19 @@
   .rprow .g { color: #565f89; font-size: 12px; } .rprow .nm { flex: 1; } .rprow .ag { font-size: 10px; color: #565f89; }
   .rpfoot { display: flex; justify-content: flex-end; }
   .rpfoot button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
+  /* view editor */
+  .viewed .vlabel { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #9aa5ce; }
+  .vinput { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 7px; font-size: 13px; }
+  .vfilter { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 8px;
+    font-family: ui-monospace, monospace; font-size: 12px; min-height: 54px; resize: vertical; }
+  .vhint { font-size: 10px; color: #565f89; line-height: 1.5; }
+  .vpreview { font-size: 12px; padding: 4px 0; }
+  .vpreview.ok { color: #9ece6a; } .vpreview.err { color: #f7768e; }
+  .vfoot { justify-content: flex-start; gap: 8px; }
+  .vfoot .spacer { flex: 1; }
+  .vfoot button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
+  .vfoot .primary { background: #7aa2f7; color: #11121a; border: 0; font-weight: 600; }
+  .vfoot .danger { color: #ffb4c0; border-color: #5a2030; }
 
   /* Back button: only on phone width (the two panes become one — see the media query). */
   .back { display: none; background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d;
