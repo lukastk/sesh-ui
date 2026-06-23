@@ -6,7 +6,8 @@
   import { FitAddon } from '@xterm/addon-fit'
   import '@xterm/xterm/css/xterm.css'
   import { onMount, onDestroy } from 'svelte'
-  import { api } from '../../lib/seshClient.js'
+  import { App as CapApp } from '@capacitor/app'
+  import { api, sesh } from '../../lib/seshClient.js'
   import { uploadBlobPath } from '../../lib/blobs.js'
   import { fontScale, bumpTerm, setTerm } from '../../lib/fontscale.svelte.js'
   import { pinch } from '../../lib/pinch.js'
@@ -14,6 +15,8 @@
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
   let el
   let term, fit, ws, ro
+  let destroyed = false   // set in onDestroy so a teardown close never triggers a reconnect
+  let capHandle           // Capacitor App 'resume' listener handle (Android only)
   let fileInput
   let uploading = $state(false)
   // The whole app is `zoom: scale`; counter it here so the terminal renders at net zoom 1 (crisp),
@@ -69,6 +72,29 @@
   function onPinchStart() { pinchBaseTerm = fontScale.term }
   function onPinchMove(scale) { setTerm(Math.round(pinchBaseTerm * scale)) }
 
+  // Open (or re-open) the terminal WS to the daemon. Split out of connect() so we can re-attach on
+  // resume: the daemon spins up a FRESH grouped uiterm-* viewer per connection, so a clean re-open
+  // just redraws the current pane — no server state to restore. Guarded so we never stack sockets.
+  function openSocket() {
+    if (destroyed || !term) return
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return
+    ws = new WebSocket(api.terminalURL(threadId, term.cols, term.rows, machine))
+    ws.binaryType = 'arraybuffer'
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+    ws.onmessage = (ev) => term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data))
+    ws.onclose = () => { if (!destroyed) term?.write('\r\n\x1b[2m[terminal disconnected]\x1b[0m\r\n') }
+  }
+
+  // Reconnect-on-resume: Android tears down the WS when the display turns off / the app is
+  // backgrounded, and it does NOT come back on its own. Re-open the socket when the OS resumes the
+  // app (Capacitor App 'resume') or the page becomes visible again (covers desktop/web tab-hide too).
+  // The openSocket guard makes this a no-op when the socket is already live.
+  function reconnect() {
+    if (destroyed || !term) return
+    openSocket()
+  }
+  function onVisibility() { if (document.visibilityState === 'visible') reconnect() }
+
   function connect() {
     term = new Terminal({
       cursorBlink: true, fontSize: fontScale.term, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -81,12 +107,13 @@
     fit.fit()
     term.focus()   // entering the terminal view (open/switch thread, Enter on the filter) → ready to type
 
-    ws = new WebSocket(api.terminalURL(threadId, term.cols, term.rows, machine))
-    ws.binaryType = 'arraybuffer'
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
-    ws.onmessage = (ev) => term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data))
-    ws.onclose = () => term.write('\r\n\x1b[2m[terminal disconnected]\x1b[0m\r\n')
-    term.onData((d) => ws.readyState === 1 && ws.send(d))
+    openSocket()
+    term.onData((d) => ws?.readyState === 1 && ws.send(d))
+
+    // Re-attach when the app/display comes back. Android fires Capacitor App 'resume'; the
+    // visibilitychange listener is the cross-platform fallback (and the only signal in web/Electron).
+    document.addEventListener('visibilitychange', onVisibility)
+    if (sesh.transport === 'android') CapApp.addListener('resume', reconnect).then((h) => (capHandle = h))
 
     ro = new ResizeObserver(() => {
       try { fit.fit() } catch {}
@@ -104,6 +131,9 @@
   }
   onMount(connect)
   onDestroy(() => {
+    destroyed = true
+    try { document.removeEventListener('visibilitychange', onVisibility) } catch {}
+    try { capHandle?.remove() } catch {}
     try { el?.removeEventListener('paste', onPasteCapture, true) } catch {}
     try {
       el?.removeEventListener('touchstart', onTouchStart, { capture: true })

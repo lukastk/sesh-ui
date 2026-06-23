@@ -5,7 +5,7 @@
   // kept separate from the live-poll model so a poll tick never wipes an action error.
   import { api, sesh } from '../lib/seshClient.js'
   import { compileView, DEFAULT_VIEWS } from '../lib/threadView.js'
-  import { glyph, stateLabel, surfaceFor, rpcLive, shortId } from '../lib/format.js'
+  import { glyph, stateLabel, defaultSurfaceFor, rpcLive, shortId } from '../lib/format.js'
   import { fuzzyScore } from '../lib/fuzzy.js'
   import { matchAction } from '../lib/keymap.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
@@ -110,6 +110,9 @@
   // daemon's ui_config.collapse_parents (fetched on load); a user can expand/collapse individual
   // parents within the session via `overrides` (ids whose state differs from the default).
   let collapseDefault = $state(true)        // ui_config.collapse_parents (default true)
+  // Which chat surface a thread opens on by default: ui_config.default_chat_view
+  // ('terminal' | 'transcript' | 'rpc'; default 'terminal'). Absent field → 'terminal'.
+  let defaultChatView = $state('terminal')
   let overrides = $state(new Set())         // parent ids toggled away from the default (session-only)
   const isCollapsed = (id) => collapseDefault !== overrides.has(id) // default XOR overridden
   function toggleCollapse(id) {
@@ -120,7 +123,10 @@
   // Fetch the per-daemon UI config once on load → set the parent-collapse default.
   $effect(() => {
     api.uiConfigGet()
-      .then((r) => { collapseDefault = r.ui_config?.collapse_parents ?? true; overrides = new Set() })
+      .then((r) => {
+        collapseDefault = r.ui_config?.collapse_parents ?? true; overrides = new Set()
+        defaultChatView = r.ui_config?.default_chat_view ?? 'terminal'  // absent → terminal
+      })
       .catch(() => {}) // pre-24 daemon → keep the default (collapsed)
   })
 
@@ -345,7 +351,7 @@
   let surface = $derived(
     !selected ? 'none'
       : mode !== 'auto' ? mode
-        : surfaceFor(selected)
+        : defaultSurfaceFor(selected, defaultChatView)
   )
 </script>
 

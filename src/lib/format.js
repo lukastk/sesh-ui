@@ -46,6 +46,20 @@ export function surfaceFor(row) {
   return 'headless'
 }
 
+// The surface to OPEN a thread on, honoring the user's ui_config.default_chat_view preference
+// ('terminal' | 'transcript' | 'rpc'; default 'terminal'). The preference only takes effect when
+// that surface is actually applicable to the thread; otherwise we fall back to surfaceFor's natural
+// choice. 'transcript' maps to the 'headless' surface (always available); 'terminal' needs a headful
+// pane; 'rpc' needs a pi agent. Code defensively: an absent/unknown pref behaves like 'terminal'.
+export function defaultSurfaceFor(row, pref = 'terminal') {
+  if (!row) return 'none'
+  const want = pref === 'transcript' ? 'headless' : pref
+  if (want === 'headless') return 'headless'
+  if (want === 'terminal' && row.head === 'headful') return 'terminal'
+  if (want === 'rpc' && row.agent_kind === 'pi') return 'rpc'
+  return surfaceFor(row)
+}
+
 // Whether the RPC surface is even reachable right now (a live pi process). Used to label the
 // RPC switcher honestly for an idle headless pi (it would refuse until a turn starts).
 export const rpcLive = (row) => row?.agent_kind === 'pi' && (row.head === 'headful' || row.busy === 'busy')

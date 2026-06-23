@@ -68,6 +68,10 @@
       // full-replace contract requires echoing them back so they aren't reset.
       ...(uiCfg.default_agent !== undefined ? { default_agent: uiCfg.default_agent } : {}),
       ...(uiCfg.default_machine !== undefined ? { default_machine: uiCfg.default_machine } : {}),
+      // Default chat view (terminal | transcript | rpc) — same full-replace echo contract: only sent
+      // when the daemon exposes it, so a save never resets the user's choice (and never 400s a
+      // pre-default_chat_view daemon).
+      ...(uiCfg.default_chat_view !== undefined ? { default_chat_view: uiCfg.default_chat_view } : {}),
       ...patch,
     }
     try {
@@ -85,6 +89,8 @@
   // New-thread defaults (ui_config.default_agent / default_machine; '' machine = "the connected one").
   const setDefaultAgent = (v) => saveUiConfig({ default_agent: v })
   const setDefaultMachine = (v) => saveUiConfig({ default_machine: v })
+  // Default chat view a thread opens on (terminal | transcript | rpc; daemon-side schema gated).
+  const setDefaultChatView = (v) => saveUiConfig({ default_chat_view: v })
   // transcript_prefetch_secs: clamp to a non-negative int; '' / NaN → 0 (off).
   function setPrefetchSecs(v) {
     const n = Math.max(0, Math.floor(Number(v)))
@@ -210,6 +216,15 @@
           <select value={uiCfg.default_machine || ''} onchange={(e) => setDefaultMachine(e.currentTarget.value)}>
             <option value="">(the machine you're connected to)</option>
             {#each machines as m (m)}<option value={m}>{m}{m === connectedMachine ? ' (this)' : ''}</option>{/each}
+          </select>
+        </label>
+      {/if}
+      {#if uiCfg.default_chat_view !== undefined}
+        <label class="ddl">Default chat view
+          <select value={uiCfg.default_chat_view || 'terminal'} onchange={(e) => setDefaultChatView(e.currentTarget.value)}>
+            <option value="terminal">Terminal</option>
+            <option value="transcript">Transcript</option>
+            <option value="rpc">RPC (pi)</option>
           </select>
         </label>
       {/if}

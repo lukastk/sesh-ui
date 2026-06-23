@@ -8,13 +8,16 @@
   import { FitAddon } from '@xterm/addon-fit'
   import '@xterm/xterm/css/xterm.css'
   import { onMount, onDestroy } from 'svelte'
-  import { api } from '../lib/seshClient.js'
+  import { App as CapApp } from '@capacitor/app'
+  import { api, sesh } from '../lib/seshClient.js'
   import { fontScale, bumpTerm, setTerm } from '../lib/fontscale.svelte.js'
   import { pinch } from '../lib/pinch.js'
 
   let { machine = undefined } = $props()  // which machine's master cockpit (undefined = connected)
   let el
   let term, fit, ws, ro
+  let destroyed = false   // set in onDestroy so a teardown close never triggers a reconnect
+  let capHandle           // Capacitor App 'resume' listener handle (Android only)
   // The whole app is `zoom: scale`; counter it here so the terminal renders at net zoom 1 (crisp),
   // controlled ONLY by its own xterm fontSize (fontScale.term) — matching the thread terminal.
   let counterZoom = $derived(1 / fontScale.scale)
@@ -39,6 +42,30 @@
   function onPinchStart() { pinchBaseTerm = fontScale.term }
   function onPinchMove(scale) { setTerm(Math.round(pinchBaseTerm * scale)) }
 
+  // Open (or re-open) the master-cockpit WS. Split out of connect() so we can re-attach on resume:
+  // a fresh attach just re-runs master_command's pty viewer server-side. Guarded so we never stack
+  // sockets. A failed upgrade (e.g. master_command unset → 409) or a dropped attach lands in onclose.
+  function openSocket() {
+    if (destroyed || !term) return
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return
+    ws = new WebSocket(api.masterURL(term.cols, term.rows, machine))
+    ws.binaryType = 'arraybuffer'
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+    ws.onmessage = (ev) => term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data))
+    // The screen pre-checks master_command and shows a clear notice for the 409 case; this is the
+    // in-pane note for a dropped attach.
+    ws.onclose = () => { if (!destroyed) term?.write('\r\n\x1b[2m[master terminal disconnected]\x1b[0m\r\n') }
+  }
+
+  // Reconnect-on-resume: Android tears down the WS when the display turns off / the app is
+  // backgrounded and it does not come back on its own. Re-open on Capacitor App 'resume' or when the
+  // page becomes visible again. openSocket's guard makes this a no-op when the socket is already live.
+  function reconnect() {
+    if (destroyed || !term) return
+    openSocket()
+  }
+  function onVisibility() { if (document.visibilityState === 'visible') reconnect() }
+
   function connect() {
     term = new Terminal({
       cursorBlink: true, fontSize: fontScale.term, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -50,14 +77,13 @@
     term.open(el)
     fit.fit()
 
-    ws = new WebSocket(api.masterURL(term.cols, term.rows, machine))
-    ws.binaryType = 'arraybuffer'
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
-    ws.onmessage = (ev) => term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data))
-    // A failed upgrade (e.g. master_command unset → 409) or a dropped attach lands here. The screen
-    // pre-checks master_command and shows a clear notice for the 409 case; this is the in-pane note.
-    ws.onclose = () => term?.write('\r\n\x1b[2m[master terminal disconnected]\x1b[0m\r\n')
-    term.onData((d) => ws.readyState === 1 && ws.send(d))
+    openSocket()
+    term.onData((d) => ws?.readyState === 1 && ws.send(d))
+
+    // Re-attach when the app/display comes back (Android 'resume'; visibilitychange as the
+    // cross-platform fallback and the only signal in web/Electron).
+    document.addEventListener('visibilitychange', onVisibility)
+    if (sesh.transport === 'android') CapApp.addListener('resume', reconnect).then((h) => (capHandle = h))
 
     ro = new ResizeObserver(() => {
       try { fit.fit() } catch {}
@@ -71,6 +97,9 @@
   }
   onMount(connect)
   onDestroy(() => {
+    destroyed = true
+    try { document.removeEventListener('visibilitychange', onVisibility) } catch {}
+    try { capHandle?.remove() } catch {}
     try {
       el?.removeEventListener('touchstart', onTouchStart, { capture: true })
       el?.removeEventListener('touchmove', onTouchMove, { capture: true })
