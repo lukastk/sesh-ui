@@ -11,6 +11,7 @@
   import { modelSuggestions } from '../../lib/models.js'
   import { prefs } from '../../lib/uiprefs.svelte.js'
   import Markdown from '../Markdown.svelte'
+  import PromptFullscreen from './PromptFullscreen.svelte'
 
   // headful: this thread has a LIVE pane (claude/codex viewed in transcript mode) — the composer
   // delivers via `thread send` (send-keys into the pane), NOT send-headless, and the transcript is
@@ -40,6 +41,7 @@
   let uploading = $state(false)
   let fileInput
   let composerEl = $state(null)   // the message textarea — auto-focused on mount (entering this view)
+  let expanded = $state(false)    // fullscreen prompt editor open?
 
   // Focus the composer as soon as the view mounts, so opening a thread / entering Transcript mode
   // lets you type immediately (the surface is keyed per thread+view, so this fires on each switch).
@@ -224,10 +226,16 @@
     <div class="composer">
       <textarea bind:this={composerEl} bind:value={draft} placeholder={headful ? 'Send into the live pane… (⌘/Ctrl+Enter) · drop/paste a file' : 'Send a headless turn… (⌘/Ctrl+Enter) · drop or paste a file to attach'} onkeydown={onkey} onpaste={onPaste}></textarea>
       <input type="file" multiple bind:this={fileInput} onchange={(e) => { attachFiles(e.currentTarget.files); e.currentTarget.value = '' }} style="display:none" />
+      <button class="expand" onclick={() => (expanded = true)} title="expand to fullscreen editor">⤢</button>
       <button class="attach" onclick={() => fileInput.click()} disabled={uploading} title="attach file / image">{uploading ? '…' : '📎'}</button>
       <button onclick={send} disabled={sending}>{sending ? '…' : 'Send'}</button>
     </div>
   </div>
+  {#if expanded}
+    <PromptFullscreen bind:value={draft} accent="#7aa2f7"
+      placeholder={headful ? 'Send into the live pane…' : 'Send a headless turn…'}
+      onclose={() => (expanded = false)} onsend={() => { expanded = false; send() }} />
+  {/if}
 </div>
 
 <style>
@@ -263,6 +271,9 @@
   .attach { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 8px;
     padding: 0 12px; cursor: pointer; font-size: 15px; min-width: 44px; }
   .attach:disabled { opacity: 0.5; }
+  .expand { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 8px;
+    padding: 0 12px; cursor: pointer; font-size: 15px; min-width: 44px; }
+  .expand:hover { background: #232433; }
   textarea { flex: 1; resize: none; height: 46px; background: #1a1b26; color: #c0caf5;
     border: 1px solid #2a2b3d; border-radius: 8px; padding: 8px; font-family: inherit; font-size: 13px; }
   button { background: #7aa2f7; color: #16161e; border: 0; border-radius: 8px; padding: 0 16px;
