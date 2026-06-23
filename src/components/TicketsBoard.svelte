@@ -49,9 +49,51 @@
   let filterEl = $state(null)
   let fName = $state(true)            // match the name (default on)
   let fPrompt = $state(false)         // match the prompt
-  let statusFilter = $state('all')    // 'all' | one of TICKET_STATUSES
   let filterActive = $state(0)        // fzf highlighted candidate index
   let listEl = $state(null)
+
+  // ── status filter: a SET of enabled statuses (a checkbox each). Default = the open work
+  // (triage+ready+active); persisted. An empty set shows nothing (you unchecked them all).
+  const DEFAULT_STATUSES = ['triage', 'ready', 'active']
+  let statusSet = $state((() => {
+    try { const r = JSON.parse(localStorage.getItem('seshui.ticketStatuses')); if (Array.isArray(r)) return new Set(r) } catch {}
+    return new Set(DEFAULT_STATUSES)
+  })())
+  function toggleStatus(s) {
+    const n = new Set(statusSet); n.has(s) ? n.delete(s) : n.add(s); statusSet = n
+    try { localStorage.setItem('seshui.ticketStatuses', JSON.stringify([...n])) } catch {}
+  }
+
+  // ── sorting: two ordered rules (primary, then a secondary tie-breaker), each a key + direction.
+  // Default: status (in TICKET_STATUSES order: triage→ready→active→done→dropped), then newest-created.
+  const SORT_KEYS = [['status', 'Status'], ['created', 'Created'], ['closed', 'Completed'], ['name', 'Name']]
+  let sort1 = $state(loadSort('seshui.ticketSort1', { key: 'status', dir: 'asc' }))
+  let sort2 = $state(loadSort('seshui.ticketSort2', { key: 'created', dir: 'desc' }))
+  function loadSort(k, def) { try { const r = JSON.parse(localStorage.getItem(k)); if (r && r.key) return r } catch {} return def }
+  $effect(() => { try { localStorage.setItem('seshui.ticketSort1', JSON.stringify(sort1)) } catch {} })
+  $effect(() => { try { localStorage.setItem('seshui.ticketSort2', JSON.stringify(sort2)) } catch {} })
+
+  // Compare one key (status uses the canonical lifecycle order; missing dates sort as 0 = oldest).
+  function cmpKey(key, ea, eb) {
+    const a = ea.ticket, b = eb.ticket
+    switch (key) {
+      case 'status': return TICKET_STATUSES.indexOf(a.status) - TICKET_STATUSES.indexOf(b.status)
+      case 'created': return (a.created_at_unix || 0) - (b.created_at_unix || 0)
+      case 'closed': return (a.closed_at_unix || 0) - (b.closed_at_unix || 0)
+      case 'name': return (a.name || '').localeCompare(b.name || '')
+      default: return 0
+    }
+  }
+  function applySort(list) {
+    return [...list].sort((a, b) => {
+      for (const r of [sort1, sort2]) {
+        let c = cmpKey(r.key, a, b)
+        if (r.dir === 'desc') c = -c
+        if (c) return c
+      }
+      return (a.ticket.name || '').localeCompare(b.ticket.name || '')   // stable final tie-break
+    })
+  }
 
   // sidebar width (drag-resizable, like Threads), persisted.
   let sidebarWidth = $state((() => { const v = Number(localStorage.getItem('seshui.ticketsSidebarW')); return v >= 220 && v <= 640 ? v : 340 })())
@@ -92,9 +134,10 @@
   let searchFields = $derived(fName || fPrompt ? { name: fName, prompt: fPrompt } : { name: true })
   let listed = $derived.by(() => {
     const q = filter.trim()
-    let es = entries
-    if (statusFilter !== 'all') es = es.filter((e) => e.ticket.status === statusFilter)
-    if (!q) return [...es].sort((a, b) => (a.ticket.name || '').localeCompare(b.ticket.name || ''))
+    const es = entries.filter((e) => statusSet.has(e.ticket.status))
+    // No query → the user's sort rules. With a query → rank by fuzzy score (sort rules don't apply,
+    // matching the Threads fzf behaviour: best match first).
+    if (!q) return applySort(es)
     return es
       .map((e) => {
         const hay = [searchFields.name && e.ticket.name, searchFields.prompt && e.ticket.prompt].filter(Boolean).join(' ')
@@ -105,7 +148,7 @@
       .map((x) => x.e)
   })
   let activeIdx = $derived(Math.min(filterActive, Math.max(0, listed.length - 1)))
-  $effect(() => { void filter; void statusFilter; filterActive = 0 })
+  $effect(() => { void filter; void statusSet; filterActive = 0 })
   $effect(() => { void activeIdx; if (filter.trim()) listEl?.querySelector('.t-row.fzactive')?.scrollIntoView({ block: 'nearest' }) })
 
   function onFilterKey(e) {
@@ -251,6 +294,14 @@
 
 <svelte:window onkeydown={onScreenKey} />
 
+{#snippet sortRule(rule, set)}
+  <select class="sort-sel" value={rule.key} onchange={(e) => set({ ...rule, key: e.currentTarget.value })} title="sort key">
+    {#each SORT_KEYS as [k, label]}<option value={k}>{label}</option>{/each}
+  </select>
+  <button class="dir" title={rule.dir === 'asc' ? 'ascending — click for descending' : 'descending — click for ascending'}
+    onclick={() => set({ ...rule, dir: rule.dir === 'asc' ? 'desc' : 'asc' })}>{rule.dir === 'asc' ? '↑' : '↓'}</button>
+{/snippet}
+
 {#snippet editor()}
   <div class="ed-head">
     <input class="ed-name" bind:value={sel.name} onblur={saveName} placeholder="ticket name" />
@@ -323,10 +374,20 @@
             <span class="fl-label">match</span>
             <label class="chip"><input type="checkbox" bind:checked={fName} /> name</label>
             <label class="chip"><input type="checkbox" bind:checked={fPrompt} /> prompt</label>
-            <select class="status-sel" bind:value={statusFilter} title="filter by status">
-              <option value="all">all status</option>
-              {#each TICKET_STATUSES as s}<option value={s}>{s}</option>{/each}
-            </select>
+          </div>
+          <div class="filt-opts status-opts">
+            <span class="fl-label">status</span>
+            {#each TICKET_STATUSES as s}
+              <label class="chip stat" class:on={statusSet.has(s)} style:--c={TICKET_COLORS[s]}>
+                <input type="checkbox" checked={statusSet.has(s)} onchange={() => toggleStatus(s)} /> {s}
+              </label>
+            {/each}
+          </div>
+          <div class="filt-opts sort-opts">
+            <span class="fl-label">sort</span>
+            {@render sortRule(sort1, (v) => (sort1 = v))}
+            <span class="fl-then">then</span>
+            {@render sortRule(sort2, (v) => (sort2 = v))}
           </div>
         </div>
         <div class="list" bind:this={listEl}>
@@ -343,7 +404,13 @@
               </span>
             </button>
           {/each}
-          {#if listed.length === 0}<div class="empty">{filter || statusFilter !== 'all' ? 'no matching tickets' : 'no tickets — click “+ New ticket”.'}</div>{/if}
+          {#if listed.length === 0}
+            {#if !loadedOnce && !filter}
+              {#each Array(7) as _}<div class="skel-row"><span class="skel-st"></span><span class="skel-nm"></span></div>{/each}
+            {:else}
+              <div class="empty">{filter || statusSet.size < TICKET_STATUSES.length ? 'no matching tickets' : 'no tickets — click “+ New ticket”.'}</div>
+            {/if}
+          {/if}
         </div>
       </aside>
 
@@ -459,7 +526,21 @@
   .filt-opts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .fl-label { font-size: 10px; color: #565f89; text-transform: uppercase; letter-spacing: 0.05em; }
   .chip { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #9aa5ce; cursor: pointer; }
-  .status-sel { margin-left: auto; background: #1a1b26; color: #9aa5ce; border: 1px solid #2a2b3d; border-radius: 6px; padding: 3px 6px; font-size: 11px; }
+  .fl-then { font-size: 10px; color: #565f89; }
+  /* status filter: a colour-coded checkbox chip per status (default triage+ready+active). */
+  .chip.stat { border: 1px solid #232433; border-radius: 12px; padding: 2px 8px 2px 6px; color: #565f89; }
+  .chip.stat.on { color: var(--c); border-color: color-mix(in srgb, var(--c) 45%, #232433); background: color-mix(in srgb, var(--c) 12%, transparent); }
+  .chip.stat input { accent-color: var(--c); }
+  /* sort: a key <select> + a direction toggle, twice (primary then secondary). */
+  .sort-sel { background: #1a1b26; color: #9aa5ce; border: 1px solid #2a2b3d; border-radius: 6px; padding: 3px 6px; font-size: 11px; }
+  .dir { background: #1a1b26; color: #7dcfff; border: 1px solid #2a2b3d; border-radius: 6px; padding: 2px 7px; font-size: 12px; line-height: 1; cursor: pointer; }
+  .dir:hover { background: #232433; }
+  /* cold-start skeleton (first ever load, no warm cache). */
+  .skel-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; }
+  .skel-st, .skel-nm { background: #16161e; border-radius: 5px; animation: skel 1.2s ease-in-out infinite; }
+  .skel-st { width: 40px; height: 9px; }
+  .skel-nm { height: 11px; flex: 1; max-width: 70%; }
+  @keyframes skel { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.85; } }
   .list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
   .t-row { text-align: left; background: #16161e; border: 1px solid #232433; border-left: 3px solid; border-radius: 8px;
     padding: 8px 10px; cursor: pointer; color: inherit; display: flex; flex-direction: column; gap: 3px; }
