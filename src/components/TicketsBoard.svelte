@@ -366,7 +366,7 @@
       {/each}
     </div>
   {:else}
-    <div class="screen" class:detail={!!sel} class:resizing style="--sidebar-w:{sidebarWidth}px">
+    <div class="screen" class:showdetail={!!sel} class:resizing style="--sidebar-w:{sidebarWidth}px">
       <aside>
         <div class="controls">
           <input class="filter" bind:this={filterEl} bind:value={filter} placeholder="filter tickets…  (⌘F)" onkeydown={onFilterKey} />
@@ -517,6 +517,12 @@
   /* ── list+detail view (mirrors ThreadsScreen) ── */
   .screen { position: relative; flex: 1; display: grid; grid-template-columns: var(--sidebar-w, 340px) 1fr; min-height: 0; }
   .screen.resizing { cursor: col-resize; user-select: none; }
+  /* Pin each pane to its column EXPLICITLY rather than leaning on grid auto-placement: the absolute
+     resizer sits between them in source order, and without explicit columns a single mis-step (e.g.
+     the resizer not being taken out of flow) would push <main> onto a second row — rendering the
+     ticket detail full-width UNDERNEATH the sidebar instead of beside it. */
+  aside { grid-column: 1; grid-row: 1; }
+  main { grid-column: 2; grid-row: 1; }
   .resizer { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 8; cursor: col-resize; }
   .resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; }
   .resizer:hover::after, .resizer.active::after { background: #7aa2f7; box-shadow: 0 0 5px #7aa2f788; }
@@ -609,10 +615,11 @@
   /* Phone width: single pane (list OR editor, with a back button), and the board swipes column-wise. */
   @media (max-width: 720px) {
     .screen { grid-template-columns: 1fr; }
+    aside, main { grid-column: 1; }      /* single-pane phone layout: undo the desktop column pinning */
     .resizer { display: none; }
     main { display: none; }
-    .screen.detail aside { display: none; }
-    .screen.detail main { display: flex; }
+    .screen.showdetail aside { display: none; }
+    .screen.showdetail main { display: flex; }
     .back { display: inline-flex; align-items: center; align-self: flex-start; margin: 10px 0 0 12px;
       background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 6px; font-size: 13px; padding: 4px 11px; cursor: pointer; }
     .board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 82vw; overflow-x: auto; padding: 12px; }
