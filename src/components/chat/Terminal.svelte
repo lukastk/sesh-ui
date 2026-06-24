@@ -11,6 +11,7 @@
   import { uploadBlobPath } from '../../lib/blobs.js'
   import { fontScale, bumpTerm, setTerm } from '../../lib/fontscale.svelte.js'
   import { pinch } from '../../lib/pinch.js'
+  import { prefs } from '../../lib/uiprefs.svelte.js'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
   let el
@@ -105,7 +106,11 @@
     term.loadAddon(fit)
     term.open(el)
     fit.fit()
-    term.focus()   // entering the terminal view (open/switch thread, Enter on the filter) → ready to type
+    // Auto-focus on open only when the composer-autofocus pref is on (default OFF on Android) — the
+    // terminal is the DEFAULT thread view, so focusing it on mount was popping the soft keyboard the
+    // instant a thread opened (the HeadlessChat/RpcChat composers were already gated, the terminal
+    // wasn't). Off → the user taps the terminal to start typing.
+    if (prefs.composerAutofocus) term.focus()
 
     openSocket()
     term.onData((d) => ws?.readyState === 1 && ws.send(d))
