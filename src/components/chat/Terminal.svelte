@@ -12,8 +12,15 @@
   import { fontScale, bumpTerm, setTerm } from '../../lib/fontscale.svelte.js'
   import { pinch } from '../../lib/pinch.js'
   import { prefs } from '../../lib/uiprefs.svelte.js'
+  import ExtraKeys from './ExtraKeys.svelte'
 
   let { threadId, machine = undefined } = $props()  // machine: dial a remote thread's owning daemon
+  // Termux-style extra-keys row (Android only) — layout from the CONNECTED daemon's ui_config
+  // (a per-app preference; empty = no row). Sent straight to the pty like keystrokes.
+  let extraKeys = $state('')
+  $effect(() => { api.uiConfigGet().then((r) => { extraKeys = r.ui_config?.extra_keys || '' }).catch(() => {}) })
+  const sendKeys = (b) => { if (b && ws?.readyState === 1) ws.send(b) }
+  const openKeyboard = () => term?.focus()
   let el
   let term, fit, ws, ro
   let destroyed = false   // set in onDestroy so a teardown close never triggers a reconnect
@@ -173,11 +180,12 @@
     <button class="attach" onclick={() => fileInput.click()} disabled={uploading}
       title="attach file / image (types its path into the terminal)">{uploading ? '…' : '📎'}</button>
   </div>
+  {#if sesh.transport === 'android'}<ExtraKeys keysJson={extraKeys} onsend={sendKeys} onkeyboard={openKeyboard} />{/if}
 </div>
 
 <style>
-  .termwrap { position: relative; height: 100%; width: 100%; }
-  .term { height: 100%; width: 100%; background: #16161e; padding: 6px; box-sizing: border-box; overflow: hidden; }
+  .termwrap { position: relative; height: 100%; width: 100%; display: flex; flex-direction: column; }
+  .term { flex: 1; min-height: 0; width: 100%; background: #16161e; padding: 6px; box-sizing: border-box; overflow: hidden; }
   .tctl { position: absolute; top: 8px; right: 14px; z-index: 5; display: flex; align-items: center; gap: 4px; }
   .tctl button { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
     padding: 3px 8px; font-size: 12px; cursor: pointer; opacity: 0.7; }

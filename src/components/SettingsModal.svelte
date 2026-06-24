@@ -73,6 +73,8 @@
       // when the daemon exposes it, so a save never resets the user's choice (and never 400s a
       // pre-default_chat_view daemon).
       ...(uiCfg.default_chat_view !== undefined ? { default_chat_view: uiCfg.default_chat_view } : {}),
+      // Android extra-keys row layout (opaque JSON string; same echo contract).
+      ...(uiCfg.extra_keys !== undefined ? { extra_keys: uiCfg.extra_keys } : {}),
       ...patch,
     }
     try {
@@ -92,6 +94,9 @@
   const setDefaultMachine = (v) => saveUiConfig({ default_machine: v })
   // Default chat view a thread opens on (terminal | transcript | rpc; daemon-side schema gated).
   const setDefaultChatView = (v) => saveUiConfig({ default_chat_view: v })
+  // Android extra-keys row layout (Termux-style JSON; empty = no row). Validated as JSON by the
+  // daemon on save (a bad blob surfaces as the loud 400 via pushError).
+  const setExtraKeys = (v) => saveUiConfig({ extra_keys: v })
   // transcript_prefetch_secs: clamp to a non-negative int; '' / NaN → 0 (off).
   function setPrefetchSecs(v) {
     const n = Math.max(0, Math.floor(Number(v)))
@@ -229,6 +234,14 @@
           </select>
         </label>
       {/if}
+      {#if uiCfg.extra_keys !== undefined}
+        <label class="extrakeys">Android extra-keys row (Termux-style JSON; empty = off)
+          <textarea rows="4" value={uiCfg.extra_keys || ''} spellcheck="false"
+            placeholder={'[\n  ["ESC","TAB","UP", {"key":"/","popup":"|"}],\n  ["CTRL","ALT","LEFT","DOWN","RIGHT"]\n]'}
+            onchange={(e) => setExtraKeys(e.currentTarget.value)}></textarea>
+        </label>
+        <p class="note">Touch-keyboard extra keys shown above the terminal &amp; master tab on Android. An array of rows; each key is a string (<code>ESC</code>/<code>TAB</code>/<code>UP</code>/sticky <code>CTRL</code>/<code>ALT</code>/<code>KEYBOARD</code>/<code>PASTE</code>/a literal char), <code>{'{"macro":"CTRL a a","display":"C-a a"}'}</code>, or <code>{'{"key":"/","popup":"|"}'}</code> (long-press = popup). Empty = no row. Validated as JSON on save.</p>
+      {/if}
       {#if uiCfg.default_agent === undefined}
         <p class="note">The new-thread default agent/machine controls appear here once the connected daemon exposes them (needs <code>default_agent</code> / <code>default_machine</code> in UIConfig).</p>
       {/if}
@@ -339,6 +352,9 @@
   .ddl select { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
     padding: 7px 8px; font-size: 13px; font-family: inherit; }
   .mastercmd input { font-family: ui-monospace, monospace; font-size: 12px; }
+  .extrakeys textarea { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2b3d; border-radius: 7px;
+    padding: 8px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    resize: vertical; white-space: pre; overflow-wrap: normal; }
   .roots { display: flex; flex-direction: column; gap: 4px; }
   .roots-label { font-size: 11px; color: #565f89; }
   .root { display: flex; align-items: center; gap: 8px; background: #1a1b26; border: 1px solid #232433;
