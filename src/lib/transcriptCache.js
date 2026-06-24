@@ -36,6 +36,25 @@ const sigOf = (r) => `${r.head}|${r.busy}`
 // transcript on its OWN machine. Guarded so overlapping cycles (a slow pass + the next tick) never
 // run concurrently. All errors are swallowed — this is best-effort background work; the App's
 // connection banner already surfaces an unreachable daemon, and each view re-fetches loudly on open.
+// How many transcripts to prefetch concurrently. The cache used to warm SERIALLY (one await per
+// thread), so with dozens of active threads the first pass took several seconds — long enough that
+// clicking a not-yet-warmed thread still hit the "Loading…" state. A bounded worker pool warms the
+// whole mesh in ~ceil(N / PREFETCH_CONCURRENCY) round-trips instead of N, while staying gentle on
+// the (often shared) daemon.
+const PREFETCH_CONCURRENCY = 6
+
+async function fetchInto(r) {
+  const sig = sigOf(r)
+  try {
+    const t = await api.transcript(r.id, 300, r.machine)
+    cache.set(r.id, { msgs: parseTranscript(t.lines || [], r.agent_kind), at: Date.now(), sig })
+  } catch (e) {
+    // A never-run thread legitimately has no transcript — cache an empty list so its view shows the
+    // real empty state instantly. Any other error: leave the prior cache and retry next cycle.
+    if (/no transcript/i.test(String(e))) cache.set(r.id, { msgs: [], at: Date.now(), sig })
+  }
+}
+
 async function cycle() {
   if (running) return
   running = true
@@ -43,20 +62,18 @@ async function cycle() {
     let rows
     try { rows = (await api.grid({ allMachines: true })).rows || [] }
     catch { return }   // daemon unreachable — try again next tick
-    for (const r of rows) {
-      if (r.archived) continue
-      const sig = sigOf(r)
+    // The threads that actually need a (re)fetch this pass: non-archived, and either busy (transcript
+    // is growing) or changed since we last cached them (idle & unchanged → skip to save load).
+    const todo = rows.filter((r) => {
+      if (r.archived) return false
       const prev = cache.get(r.id)
-      if (prev && prev.sig === sig && r.busy !== 'busy') continue   // idle & unchanged → skip
-      try {
-        const t = await api.transcript(r.id, 300, r.machine)
-        cache.set(r.id, { msgs: parseTranscript(t.lines || [], r.agent_kind), at: Date.now(), sig })
-      } catch (e) {
-        // A never-run thread legitimately has no transcript — cache an empty list so its view shows
-        // the real empty state instantly. Any other error: leave the prior cache and retry next cycle.
-        if (/no transcript/i.test(String(e))) cache.set(r.id, { msgs: [], at: Date.now(), sig })
-      }
-    }
+      return !(prev && prev.sig === sigOf(r) && r.busy !== 'busy')
+    })
+    // Drain `todo` through a fixed pool of workers — bounded concurrency, no overlap with the next
+    // tick (the `running` guard still serializes whole cycles).
+    let next = 0
+    const worker = async () => { while (next < todo.length) await fetchInto(todo[next++]) }
+    await Promise.all(Array.from({ length: Math.min(PREFETCH_CONCURRENCY, todo.length) }, worker))
   } finally {
     running = false
   }
