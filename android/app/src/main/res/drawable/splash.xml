@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch/splash window background. The original Capacitor splash was a `splash.png`, but the
+     repo .gitignore excludes `*.png` (no binary blobs), so a clean checkout had no `@drawable/splash`
+     and the APK failed to link. This committed XML drawable (a flat fill matching the app's dark
+     background, #16161e) makes the Android project build self-contained from a fresh checkout. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#16161e" />
+</shape>
