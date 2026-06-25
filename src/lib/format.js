@@ -76,3 +76,45 @@ export function ago(unix) {
 }
 
 export const shortId = (id) => (id ? id.slice(0, 8) : '')
+
+// ── thread hold (schema ≥34) ────────────────────────────────────────────────
+// A held thread is parked until an ABSOLUTE instant. The daemon owns the live `on_hold` flag
+// (on_hold_until_unix > its clock) and auto-expires it; the CLIENT owns the date math, computed
+// against the USER's LOCAL clock — exactly like the sesh TUI (internal/tui/model.go).
+
+// Midnight at the START of the next local day — the default hold deadline, so a parked thread
+// returns to the active view tomorrow on its own (mirrors startOfTomorrowUnix in the TUI).
+export function startOfTomorrowUnix() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 1)
+  return Math.floor(d.getTime() / 1000)
+}
+
+// Parse a YYYY-MM-DD string as the START of that local day → unix, or null if malformed/invalid
+// (mirrors the TUI's time.ParseInLocation; an out-of-range date like 2026-02-31 is rejected).
+export function parseHoldDate(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((str || '').trim())
+  if (!m) return null
+  const [y, mo, da] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const d = new Date(y, mo - 1, da, 0, 0, 0, 0)
+  if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== da) return null
+  return Math.floor(d.getTime() / 1000)
+}
+
+// "YYYY-MM-DD" for a hold instant (the explicit-date prompt's prefill / a precise tooltip).
+export function holdDateStr(unix) {
+  if (!unix) return ''
+  const d = new Date(unix * 1000)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// Short badge text for a held row: "until Jun 27" (date known) or a bare "on hold". Read `on_hold`
+// for the live parked flag and `on_hold_until_unix` for the deadline.
+export function holdUntilLabel(row) {
+  if (!row?.on_hold) return ''
+  if (!row.on_hold_until_unix) return 'on hold'
+  const d = new Date(row.on_hold_until_unix * 1000)
+  return `until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+}

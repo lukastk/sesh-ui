@@ -5,7 +5,8 @@
   // kept separate from the live-poll model so a poll tick never wipes an action error.
   import { api, sesh } from '../lib/seshClient.js'
   import { compileView, DEFAULT_VIEWS } from '../lib/threadView.js'
-  import { glyph, stateLabel, defaultSurfaceFor, rpcLive, shortId } from '../lib/format.js'
+  import { glyph, stateLabel, defaultSurfaceFor, rpcLive, shortId,
+    startOfTomorrowUnix, parseHoldDate, holdDateStr, holdUntilLabel } from '../lib/format.js'
   import { fuzzyScore } from '../lib/fuzzy.js'
   import { matchAction } from '../lib/keymap.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
@@ -40,14 +41,23 @@
   let filter = $state(_v.filter ?? '')
   let filterEl = $state(null)        // the filter <input> (cmd+f focuses it)
   let filterActive = $state(0)       // fzf: index of the highlighted candidate in `filtered`
-  let showArchived = $state(_v.showArchived ?? false)
+  // Built-in view scope — mirrors `sesh tui`'s built-in view set (internal/tui/model.go):
+  //   active (default; not archived AND not on hold) / hold (not archived AND on hold) /
+  //   archived / all. Held threads auto-expire (the daemon flips `on_hold` once the deadline
+  //   passes), so the parked ones simply return to `active` on their own.
+  let scope = $state(_v.scope ?? 'active')
   // Default ON: show the WHOLE mesh (matches `sesh tui`, whose wrapper adds --all-machines).
   // The daemon fans out to its peers; threads on other machines appear with their own row.machine.
   let showAllMachines = $state(_v.showAllMachines ?? true)
 
   // Persist the view state on every change so leaving (unmount) and re-entering this screen lands
   // back on the same thread + surface + filter (machine filter + active view persist on their own).
-  $effect(() => { saveView('threads', { selectedId, mode, filter, showArchived, showAllMachines }) })
+  $effect(() => { saveView('threads', { selectedId, mode, filter, scope, showAllMachines }) })
+
+  // The grid needs archived rows on the client only for the archived/all scopes; active/hold ask the
+  // daemon to exclude archived (its default). Hold filtering is always client-side — the daemon never
+  // filters by hold (it just stamps the derived `on_hold`).
+  let wantArchived = $derived(scope === 'archived' || scope === 'all')
 
   // ── machine filter: a SET of machines to INCLUDE (empty = all). Persisted. Most useful with
   // all-machines on (the mesh is visible). The available machines are derived live from the grid.
@@ -105,8 +115,16 @@
   let machines = $derived([...new Set(rows.map((r) => r.machine).filter(Boolean))].sort())
   // Rows after the machine filter + active view predicate — the tree is built from THIS (filtering a
   // parent out just promotes its children to roots, which the tree walk already handles).
+  // The built-in scope predicate (mirrors builtinViewAdmits in the TUI). active/hold both exclude
+  // archived (the daemon already did, with archived off) and split on the live `on_hold` flag.
+  const scopePred = {
+    active:   (r) => !r.archived && !r.on_hold,
+    hold:     (r) => !r.archived && r.on_hold,
+    archived: (r) => !!r.archived,
+    all:      () => true,
+  }
   let visibleRows = $derived.by(() => {
-    let rs = rows
+    let rs = rows.filter(scopePred[scope] || scopePred.active)
     if (machineFilter.size) rs = rs.filter((r) => machineFilter.has(r.machine))
     const cv = compiledView
     if (cv && cv.ok) rs = rs.filter((r) => { try { return cv.fn(r) } catch { return true } })
@@ -116,6 +134,26 @@
   let forkTarget = $state(null)      // thread being forked (opens the modal in fork mode)
   let renameTarget = $state(null)    // thread being renamed (in-app dialog, not window.prompt)
   let deleteTarget = $state(null)    // thread pending delete confirmation
+  let holdTarget = $state(null)      // thread pending an explicit hold-until date (in-app date prompt)
+
+  // Hold a thread until tomorrow (start of the next LOCAL day) or RELEASE it if already held —
+  // the `h` toggle in the TUI. The daemon stamps `on_hold` against its own clock, so once the POST
+  // returns and we refresh, an active-scope list drops the parked row at once (like archive). 0 clears.
+  async function toggleHold(row) {
+    const until = row.on_hold ? 0 : startOfTomorrowUnix()
+    await act('hold', () => api.hold(row.id, until, row.machine))
+  }
+  // The TUI's `H`: hold until an explicit YYYY-MM-DD date; an empty input clears the hold.
+  async function doHoldDate(input) {
+    const r = holdTarget
+    holdTarget = null
+    if (input == null) return                      // cancelled
+    const s = input.trim()
+    if (s === '') { await act('hold', () => api.hold(r.id, 0, r.machine)); return }   // clear
+    const until = parseHoldDate(s)
+    if (until == null) { pushError(`hold: bad date "${s}" (want YYYY-MM-DD)`); return }
+    await act('hold', () => api.hold(r.id, until, r.machine))
+  }
 
   // Tree fold (like the TUI). The DEFAULT collapsed state for parents comes from the connected
   // daemon's ui_config.collapse_parents (fetched on load); a user can expand/collapse individual
@@ -145,15 +183,16 @@
     // Background poll: report reachability to the shared connection store (→ one banner),
     // never a per-tick toast. On failure keep the last-known rows rather than blanking.
     try {
-      rows = (await poll(api.grid({ archived: showArchived, allMachines: showAllMachines }))).rows || []
+      rows = (await poll(api.grid({ archived: wantArchived, allMachines: showAllMachines }))).rows || []
       loadedOnce = true
       cacheSet('grid', rows)
-      // Keep the warm cache fresh — but only for the DEFAULT view (archived off, all machines on),
-      // so a filtered/archived fetch never becomes the "instant paint" the next tab open inherits.
-      if (!showArchived && showAllMachines) setGrid(rows)
+      // Keep the warm cache fresh — but only for the DEFAULT view (active scope = archived off, all
+      // machines on), so a filtered/archived fetch never becomes the "instant paint" the next tab
+      // open inherits. (Held rows ride along; the active-scope filter hides them on paint.)
+      if (scope === 'active' && showAllMachines) setGrid(rows)
     } catch {}
   }
-  $effect(() => { showArchived; showAllMachines; refresh() })   // immediate refetch when a toggle flips
+  $effect(() => { wantArchived; showAllMachines; refresh() })   // immediate refetch when the scope/toggle flips
   $effect(() => { const t = setInterval(refresh, 2500); return () => clearInterval(t) })
 
   // Cross-machine chat: a thread on ANOTHER machine has its rpc/terminal pane + transcript on that
@@ -279,6 +318,8 @@
     items.push({ label: 'Set parent…', onselect: () => { selectedId = row.id; reparentPick = true } })
     items.push({ label: 'Rename', onselect: () => (renameTarget = row) })
     items.push({ label: row.archived ? 'Unarchive' : 'Archive', onselect: () => act('archive', () => api.archive(row.id, !row.archived, row.machine)) })
+    items.push({ label: row.on_hold ? 'Release hold' : 'Hold until tomorrow', onselect: () => toggleHold(row) })
+    items.push({ label: 'Hold until date…', onselect: () => (holdTarget = row) })
     items.push({ separator: true })
     items.push({ label: 'Delete', danger: true, onselect: () => (deleteTarget = row) })
     return items
@@ -319,6 +360,7 @@
     if (editingView) { editingView = null; return true }
     if (reparentPick) { reparentPick = false; return true }
     if (deleteTarget) { deleteTarget = null; return true }
+    if (holdTarget) { holdTarget = null; return true }
     if (renameTarget) { renameTarget = null; return true }
     if (forkTarget) { forkTarget = null; return true }
     if (newParent !== undefined) { newParent = undefined; return true }
@@ -376,8 +418,14 @@
     </div>
     <div class="controls">
       <input class="filter" bind:this={filterEl} bind:value={filter} placeholder="filter…  (⌘F)" onkeydown={onFilterKey} />
-      <label class="arch"><input type="checkbox" bind:checked={showArchived} /> archived</label>
       <label class="arch" title="show threads from every machine in the mesh (like sesh tui)"><input type="checkbox" bind:checked={showAllMachines} /> all&nbsp;machines</label>
+    </div>
+    <div class="subbar">
+      <span class="sb-label" title="built-in view scope (the sesh tui active / on hold / archived / all views)">scope</span>
+      {#each [['active', 'active'], ['hold', 'on hold'], ['archived', 'archived'], ['all', 'all']] as [val, label] (val)}
+        <button class="chip" class:on={scope === val} onclick={() => (scope = val)}
+          title={val === 'hold' ? 'parked threads (held until a date; they auto-return to active when it passes)' : `${label} threads`}>{label}</button>
+      {/each}
     </div>
     {#if machines.length > 1}
       <div class="subbar">
@@ -425,6 +473,7 @@
           <span class="agent">
             {row.agent_kind}
             {#if conn.machine && row.machine !== conn.machine}<span class="mach" title="lives on {row.machine}">⌘ {row.machine}</span>{/if}
+            {#if row.on_hold}<span class="hold" title="on hold {holdDateStr(row.on_hold_until_unix)}">⏸ {holdUntilLabel(row)}</span>{/if}
             {#if row.tickets_open}<span class="tkt" class:needs={row.ticket_needs_input}>🎫{row.tickets_open}</span>{/if}
           </span>
         </button>
@@ -482,6 +531,9 @@
             title={selected.notify ? 'notifications on — click to mute' : 'notifications muted — click to enable'}>{selected.notify ? '🔔' : '🔕'}</button>
           <button onclick={() => (renameTarget = selected)}>Rename</button>
           <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived, selected.machine))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
+          <button onclick={() => toggleHold(selected)}
+            oncontextmenu={(e) => { e.preventDefault(); holdTarget = selected }}
+            title={selected.on_hold ? `on hold ${holdUntilLabel(selected)} — click to release · right-click for a date` : 'park this thread (until tomorrow) so it leaves the active list · right-click to pick a date'}>{selected.on_hold ? '⏸ Release' : '⏸ Hold'}</button>
           <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
         </div>
       </header>
@@ -571,6 +623,13 @@
     </div>
   {/if}
 
+  {#if holdTarget}
+    <PromptDialog title={`Hold “${holdTarget.name || shortId(holdTarget.id)}” until…`}
+      label="Date (YYYY-MM-DD; empty clears the hold)" value={holdDateStr(holdTarget.on_hold_until_unix)}
+      placeholder="2026-06-27" confirmLabel="Hold"
+      onsubmit={doHoldDate} oncancel={() => (holdTarget = null)} />
+  {/if}
+
   {#if renameTarget}
     <PromptDialog title="Rename thread" label="Name" value={renameTarget.name || ''}
       placeholder="(nameless)" confirmLabel="Rename"
@@ -635,6 +694,7 @@
   .row .st { font-size: 10px; color: #9aa5ce; text-align: right; }
   .row .agent { grid-column: 2 / span 2; font-size: 10px; color: #565f89; display: flex; gap: 6px; align-items: center; }
   .row .mach { color: #7dcfff; background: #142733; border: 1px solid #1e3a4a; border-radius: 4px; padding: 0 4px; }
+  .row .hold { color: #bb9af7; background: #1e1b32; border: 1px solid #2f2a4a; border-radius: 4px; padding: 0 4px; }
   .row .tkt { color: #e0af68; }
   .row .tkt.needs { color: #f7768e; }
   .empty, .placeholder { color: #565f89; padding: 20px; }

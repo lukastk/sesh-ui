@@ -111,6 +111,22 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
       mesh (HTTP + a live macstudio terminal routed through the bridge). TERM fix + TCP API now live on
       macbook, mymain, macstudio. **Pending: final GUI check from the Mac app (Lukas).**
 
+### Hardening (round 4 — thread HOLD, mirroring sesh schema 34)
+- [x] **Thread hold** — mirror the sesh daemon's new `POST /v1/threads/hold` (commit `c3b1c4f`,
+      schema 34). `seshClient.api.hold(id, onHoldUntilUnix, machine)` posts `{id, on_hold_until_unix}`,
+      routed cross-machine like archive/notify (a pre-34 daemon 404s it loudly). The thread list grew a
+      built-in **view scope** (`active` / `on hold` / `archived` / `all`) replacing the bare archived
+      checkbox — mirrors `sesh tui`'s built-in views (`internal/tui/model.go` builtinViewAdmits):
+      `active` (default) hides archived AND on-hold rows; `on hold` shows the parked ones; hold filtering
+      is client-side (`row.on_hold`), archived stays a daemon query flag. Per-thread actions (detail
+      header button + row context menu): **Hold until tomorrow / Release** toggle (the TUI's `h`) and
+      **Hold until date…** (the TUI's `H`, a YYYY-MM-DD prompt; empty clears). Date math is the CLIENT's,
+      computed against the user's LOCAL clock (`startOfTomorrowUnix`/`parseHoldDate` in `format.js`) — the
+      daemon is a pure setter and auto-expires `on_hold` against its own clock. Held rows carry a `⏸ until
+      <date>` badge. **Verified live** against a schema-34 dev daemon via Playwright: hold → row leaves
+      the active list → appears under `on hold` with the date badge → release → returns; explicit-date
+      hold parks to that date.
+
 ## Phase 2 — Electron desktop app  · **done**
 
 - [x] **Main-process transport** (`electron/transport.cjs` + `config.cjs` + `main.cjs`): the renderer

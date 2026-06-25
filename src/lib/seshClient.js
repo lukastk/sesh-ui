@@ -134,6 +134,11 @@ export const api = {
   reparent: (id, parent, machine) => sesh.post('/threads/reparent', { id, parent }, machine),
   del: (id, force, machine) => sesh.post('/threads/delete', { id, force }, machine),
   notify: (id, on, machine) => sesh.post('/threads/notify', { id, on }, machine),
+  // Park a thread until an ABSOLUTE instant (0 = clear). The daemon is a pure setter — the CLIENT
+  // supplies on_hold_until_unix (compute "start of tomorrow" in LOCAL time); the owning daemon
+  // derives the live `on_hold` flag against ITS clock and auto-expires it. Routes cross-machine like
+  // archive/notify. A pre-34 daemon 404s this route loudly (no silent swallow). (daemon schema ≥34)
+  hold: (id, onHoldUntilUnix, machine) => sesh.post('/threads/hold', { id, on_hold_until_unix: onHoldUntilUnix }, machine),
 
   // ── threads: chat ────────────────────────────────────────────────────────
   // `machine` (optional) dials the thread's OWNING daemon for a cross-machine thread (Electron).
