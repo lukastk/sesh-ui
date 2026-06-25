@@ -126,6 +126,18 @@ RPC default (idle-headless pi has no live rpc-socket → defaults to transcript,
       <date>` badge. **Verified live** against a schema-34 dev daemon via Playwright: hold → row leaves
       the active list → appears under `on hold` with the date badge → release → returns; explicit-date
       hold parks to that date.
+- [x] **Hold inheritance** (sesh `373944b`, schema 35 — deployed fleet-wide). The daemon now derives a
+      thread's EFFECTIVE hold = `max(own, same-machine ancestors' own)`, so a held parent parks its whole
+      subtree (`on_hold` is already inheritance-aware → filtering needs NO change; a child of a held
+      parent drops out of `active` for free). Surfaced in the UI: the badge/tooltip now show
+      `on_hold_effective_unix` (the inherited deadline) and prefix a `↑` when it exceeds the thread's OWN
+      `on_hold_until_unix` (inherited), mirroring the TUI's HOLD column (`internal/tui/columns.go`). The
+      hold/release toggle decides on the thread's OWN hold (`on_hold_until_unix > now`), not the
+      effective one — you can't un-hold a child below its parent's hold (mirrors `holdToggleSelected`);
+      the explicit-date prompt still edits the OWN value. **Verified live** against a schema-35 dev daemon
+      (parent+child): hold parent → both leave `active`; under `on hold` the parent reads `until <date>`
+      and the child `↑ until <date>` (tooltip "inherited from a held parent"); the child's button reads
+      `⏸ Hold` (own=0); releasing the parent clears the subtree → both return to active.
 
 ## Phase 2 — Electron desktop app  · **done**
 

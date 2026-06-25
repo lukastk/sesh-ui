@@ -110,11 +110,25 @@ export function holdDateStr(unix) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-// Short badge text for a held row: "until Jun 27" (date known) or a bare "on hold". Read `on_hold`
-// for the live parked flag and `on_hold_until_unix` for the deadline.
+// Short badge text for a held row: "until Jun 27" (date known) or a bare "on hold". A leading "↑"
+// marks a hold INHERITED from a held ancestor (effective deadline later than this thread's OWN) —
+// mirrors the sesh TUI's HOLD column. Read `on_hold` for the live parked flag (already
+// inheritance-aware) and `on_hold_effective_unix` for the effective deadline (schema ≥35).
 export function holdUntilLabel(row) {
   if (!row?.on_hold) return ''
-  if (!row.on_hold_until_unix) return 'on hold'
-  const d = new Date(row.on_hold_until_unix * 1000)
-  return `until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  const eff = row.on_hold_effective_unix
+  if (!eff) return 'on hold'
+  const inherited = eff > (row.on_hold_until_unix || 0)
+  const d = new Date(eff * 1000)
+  return `${inherited ? '↑ ' : ''}until ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+}
+
+// Precise tooltip for a held row's badge: the effective date (YYYY-MM-DD) + an "(inherited…)" note
+// when the hold comes from a held ancestor rather than this thread's own deadline.
+export function holdTooltip(row) {
+  if (!row?.on_hold) return ''
+  const eff = row.on_hold_effective_unix
+  if (!eff) return 'on hold'
+  const inherited = eff > (row.on_hold_until_unix || 0)
+  return `on hold until ${holdDateStr(eff)}${inherited ? ' (inherited from a held parent)' : ''}`
 }

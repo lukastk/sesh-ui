@@ -6,7 +6,7 @@
   import { api, sesh } from '../lib/seshClient.js'
   import { compileView, DEFAULT_VIEWS } from '../lib/threadView.js'
   import { glyph, stateLabel, defaultSurfaceFor, rpcLive, shortId,
-    startOfTomorrowUnix, parseHoldDate, holdDateStr, holdUntilLabel } from '../lib/format.js'
+    startOfTomorrowUnix, parseHoldDate, holdDateStr, holdUntilLabel, holdTooltip } from '../lib/format.js'
   import { fuzzyScore } from '../lib/fuzzy.js'
   import { matchAction } from '../lib/keymap.svelte.js'
   import { pushError, pushInfo } from '../lib/toasts.svelte.js'
@@ -136,11 +136,17 @@
   let deleteTarget = $state(null)    // thread pending delete confirmation
   let holdTarget = $state(null)      // thread pending an explicit hold-until date (in-app date prompt)
 
-  // Hold a thread until tomorrow (start of the next LOCAL day) or RELEASE it if already held —
-  // the `h` toggle in the TUI. The daemon stamps `on_hold` against its own clock, so once the POST
-  // returns and we refresh, an active-scope list drops the parked row at once (like archive). 0 clears.
+  // Whether this thread's OWN hold is active (not the inherited/effective one). The hold/release
+  // toggle keys off THIS, not `on_hold` — you can't un-hold a child below its parent's hold (the
+  // effective deadline is a max; releasing own just leaves it held via inheritance), mirroring the
+  // TUI's holdToggleSelected (decides on OnHoldUntilUnix > now).
+  const ownHeld = (row) => (row?.on_hold_until_unix || 0) > Math.floor(Date.now() / 1000)
+
+  // Hold a thread until tomorrow (start of the next LOCAL day) or RELEASE its own hold if already
+  // held — the `h` toggle in the TUI. The daemon stamps `on_hold` against its own clock, so once the
+  // POST returns and we refresh, an active-scope list drops the parked row at once (like archive).
   async function toggleHold(row) {
-    const until = row.on_hold ? 0 : startOfTomorrowUnix()
+    const until = ownHeld(row) ? 0 : startOfTomorrowUnix()
     await act('hold', () => api.hold(row.id, until, row.machine))
   }
   // The TUI's `H`: hold until an explicit YYYY-MM-DD date; an empty input clears the hold.
@@ -318,7 +324,7 @@
     items.push({ label: 'Set parent…', onselect: () => { selectedId = row.id; reparentPick = true } })
     items.push({ label: 'Rename', onselect: () => (renameTarget = row) })
     items.push({ label: row.archived ? 'Unarchive' : 'Archive', onselect: () => act('archive', () => api.archive(row.id, !row.archived, row.machine)) })
-    items.push({ label: row.on_hold ? 'Release hold' : 'Hold until tomorrow', onselect: () => toggleHold(row) })
+    items.push({ label: ownHeld(row) ? 'Release hold' : 'Hold until tomorrow', onselect: () => toggleHold(row) })
     items.push({ label: 'Hold until date…', onselect: () => (holdTarget = row) })
     items.push({ separator: true })
     items.push({ label: 'Delete', danger: true, onselect: () => (deleteTarget = row) })
@@ -473,7 +479,7 @@
           <span class="agent">
             {row.agent_kind}
             {#if conn.machine && row.machine !== conn.machine}<span class="mach" title="lives on {row.machine}">⌘ {row.machine}</span>{/if}
-            {#if row.on_hold}<span class="hold" title="on hold {holdDateStr(row.on_hold_until_unix)}">⏸ {holdUntilLabel(row)}</span>{/if}
+            {#if row.on_hold}<span class="hold" title={holdTooltip(row)}>⏸ {holdUntilLabel(row)}</span>{/if}
             {#if row.tickets_open}<span class="tkt" class:needs={row.ticket_needs_input}>🎫{row.tickets_open}</span>{/if}
           </span>
         </button>
@@ -533,7 +539,11 @@
           <button onclick={() => act('archive', () => api.archive(selected.id, !selected.archived, selected.machine))}>{selected.archived ? 'Unarchive' : 'Archive'}</button>
           <button onclick={() => toggleHold(selected)}
             oncontextmenu={(e) => { e.preventDefault(); holdTarget = selected }}
-            title={selected.on_hold ? `on hold ${holdUntilLabel(selected)} — click to release · right-click for a date` : 'park this thread (until tomorrow) so it leaves the active list · right-click to pick a date'}>{selected.on_hold ? '⏸ Release' : '⏸ Hold'}</button>
+            title={ownHeld(selected)
+              ? `${holdTooltip(selected)} — click to release · right-click for a date`
+              : selected.on_hold
+                ? `${holdTooltip(selected)} — click to add this thread's own hold · right-click for a date`
+                : 'park this thread (until tomorrow) so it leaves the active list · right-click to pick a date'}>{ownHeld(selected) ? '⏸ Release' : '⏸ Hold'}</button>
           <button class="danger" onclick={() => (deleteTarget = selected)}>Delete</button>
         </div>
       </header>
