@@ -13,7 +13,8 @@
 
   const isFork = !!forkFrom
   let agent = $state(isFork ? forkAgent : 'pi')
-  let name = $state(isFork && forkName ? `${forkName}-fork` : '')
+  // A fork keeps the source's name marked " (fork)" (matches sesh's TUI `f`); a nameless source → "(fork)".
+  let name = $state(isFork ? (forkName ? `${forkName} (fork)` : '(fork)') : '')
   let cwd = $state(isFork ? forkCwd : '~')
   let headless = $state(false)
   let mode = $state('yolo')
