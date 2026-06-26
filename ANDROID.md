@@ -31,15 +31,40 @@ system picker (ACTION_GET_CONTENT), so the composer 📎 opens the gallery/files
 is declared for gallery reads. The base64 upload → blob store goes over the native transport via the
 shared `src/lib/blobs.js` (no Android-specific JS).
 
-## Build/run commands (macbook)
+## Build + install (the everyday loop)
+
+**`./scripts/install-android.sh`** (= `npm run android:install`) is the one-command push-to-phone:
+`vite build` → `cap sync android` → `gradlew assembleDebug` → `adb install -r` over Tailscale. Run it
+**on macbook** (the box with the JDK + Android SDK — the Linux hub has only `adb`, no toolchain, so it
+can't build). Flags: `-n/--no-build` (reinstall the existing APK), `-l/--launch` (open the app after),
+`--host H`, `--port P`.
 
 ```bash
-source /tmp/android-env.sh          # JAVA_HOME=temurin-17, ANDROID_HOME=~/Library/Android/sdk, PATH
-npm run build && npx cap sync android
-cd android && ./gradlew assembleDebug
-# install + drive on android-main (after wifi pairing — see the android-control skill):
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+cd ~/mysetup/sesh-ui && ./scripts/install-android.sh          # build + push to android-main
+./scripts/install-android.sh -n --port <connectPort> --launch # reinstall existing APK + open it
 ```
+
+**Wireless-debugging connection.** Pairing (pairing port + 6-digit code, from the phone's *Wireless
+debugging* screen) is a persistent one-time step; the **connect port rotates** on reboot / toggling WD,
+so the script tries the saved port first and only drops into the pair flow when it can't connect. It
+caches the working `host:port` in `scripts/.android-target.local` (gitignored) and **bails loudly** if
+run without a terminal to prompt on (CI/SSH/nohup). Same-wifi tip: `adb mdns services` shows the phone's
+current `_adb-tls-connect` port; over Tailscale-only, read the port off the phone screen.
+
+**Signing keeps the token alive.** The debug keystore (`~/.android/debug.keystore`) signs every build, so
+`adb install -r` upgrades in place and the on-device endpoint+token (Keystore, keyed to the app's signing
+identity) survive. An APK signed by a *different* key forces an uninstall → wipes the token, which is why
+we build+push locally rather than pulling a CI APK.
+
+### One-time connection config (per app-id, NOT per install)
+
+The endpoint+token are entered **on-device** (the token is encrypted into the Keystore on the phone — it
+can never be baked off-device). This persists across in-place reinstalls, so it's a once-ever step you
+only redo after an **app-id change** or a clear-data/uninstall. On the phone: **Settings → Connection →
+Endpoint = Remote (TCP)** → Host `mymain` (or the Tailscale IP) · Port `7878` · Token = the fleet
+`SESH_API_TOKEN` (on the hub at `~/.sesh/api-token`). The app id is **`dev.lukastk.seshui`** (renamed
+from the unrelated `work.jackfruiting.seshui` startup namespace — a fresh app, so the old one was
+uninstalled).
 
 ## The design (decided)
 
