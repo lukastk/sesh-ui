@@ -10,18 +10,38 @@ import { parseTranscript } from './transcript.js'
 
 // id → { msgs, at, sig }. `sig` is a cheap activity fingerprint used to skip re-fetching an idle,
 // unchanged thread (load reduction). `msgs` is the already-parsed bubble list for that thread.
+// This is a plain insertion-ordered Map used as an LRU: touching a thread re-inserts it at the tail,
+// and we evict from the head once past CACHE_MAX. Bounding it matters on Android, where the WebView
+// renderer runs on a tight heap — an UNBOUNDED cache of every mesh thread's parsed bubbles (re-filled
+// each prefetch cycle) is a steady memory climb that pushes the renderer into OOM-kill territory,
+// which (in transcript view, the heaviest DOM consumer) crashes the app. Desktop has headroom to
+// spare; the cap is sized so a busy mesh still gets near-instant first paint everywhere it matters.
 const cache = new Map()
+const CACHE_MAX = 60
+
+// Insert/refresh an entry as the most-recently-used, evicting the least-recently-used past the cap.
+// Re-setting an existing key in a Map keeps its original position, so delete-then-set to move it to
+// the tail (LRU ordering); then trim from the head (the oldest, least-recently-touched threads).
+function lruSet(id, entry) {
+  if (cache.has(id)) cache.delete(id)
+  cache.set(id, entry)
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value)
+}
 
 // Parsed transcript messages for a thread, or null if nothing has been prefetched/loaded yet.
+// A hit counts as a use: re-set it so an actively-viewed thread isn't evicted out from under us.
 export function getCachedTranscript(id) {
-  return cache.get(id)?.msgs ?? null
+  const entry = cache.get(id)
+  if (!entry) return null
+  lruSet(id, entry)
+  return entry.msgs
 }
 
 // Record a freshly-loaded transcript. The live views call this after every successful fetch too, so
 // navigating away from a thread and back is instant even before the next prefetch cycle runs.
 export function putCachedTranscript(id, msgs) {
   const prev = cache.get(id)
-  cache.set(id, { msgs, at: Date.now(), sig: prev?.sig })
+  lruSet(id, { msgs, at: Date.now(), sig: prev?.sig })
 }
 
 let timer = null
@@ -47,11 +67,11 @@ async function fetchInto(r) {
   const sig = sigOf(r)
   try {
     const t = await api.transcript(r.id, 300, r.machine)
-    cache.set(r.id, { msgs: parseTranscript(t.lines || [], r.agent_kind), at: Date.now(), sig })
+    lruSet(r.id, { msgs: parseTranscript(t.lines || [], r.agent_kind), at: Date.now(), sig })
   } catch (e) {
     // A never-run thread legitimately has no transcript — cache an empty list so its view shows the
     // real empty state instantly. Any other error: leave the prior cache and retry next cycle.
-    if (/no transcript/i.test(String(e))) cache.set(r.id, { msgs: [], at: Date.now(), sig })
+    if (/no transcript/i.test(String(e))) lruSet(r.id, { msgs: [], at: Date.now(), sig })
   }
 }
 
