@@ -55,27 +55,44 @@
     if (files.length) { e.preventDefault(); e.stopImmediatePropagation(); attachFiles(files) }
   }
 
-  // Touch-swipe scrolling (Android): xterm scrolls on `wheel` events, which a touch swipe never
-  // produces — so the phone couldn't scroll the terminal at all. Synthesize wheel events from a
-  // one-finger vertical drag and let xterm's OWN handler do the right thing in BOTH modes: scroll the
-  // scrollback in the normal buffer, and translate to cursor-key sequences for an alt-screen TUI
-  // (claude/pi/codex), exactly as a mouse wheel does on desktop. deltaY is in pixels (deltaMode 0),
-  // so it tracks the finger 1:1, scaled by the device-local termScrollSensitivity pref (1:1 felt
-  // sluggish on Android). Natural direction: drag down → wheel up (older), drag up → newer.
-  let touchY = null
+  // Touch-swipe scrolling (Android): a touch swipe never produces the `wheel` events xterm scrolls
+  // on, so we drive scrolling ourselves from a one-finger vertical drag. We take FULL control —
+  // preventDefault + stopImmediatePropagation in the capture phase — so neither the browser's native
+  // overflow scroll NOR xterm's built-in touch handler also fires. xterm's own handler is the reason
+  // a sensitivity setting did nothing: in the normal buffer it scrolls a hard-coded 1:1 (`scrollTop
+  // += rawDelta`, ignoring scrollSensitivity), and for a mouse-tracking alt-screen TUI (claude/codex,
+  // the usual thread view) it forwards exactly ONE wheel notch per move event regardless of delta —
+  // so scaling the delta was a no-op. Instead we accumulate (finger-delta × sensitivity) and emit one
+  // DOM_DELTA_LINE wheel notch per row of travel, letting xterm do the right thing in EVERY mode
+  // (scrollback in the normal buffer; mouse-wheel events to a mouse-tracking TUI; cursor keys to a
+  // plain alt-screen TUI). More notches per swipe ⇒ the sensitivity pref actually bites.
+  // Natural direction: drag up → newer (scroll toward the bottom), drag down → older.
+  let touchY = null, touchAccum = 0
+  // Pixel height of one rendered row, in the same (post-`zoom`) screen-px space as clientY — so the
+  // notch step matches finger travel. Measured from the live row stripe; 24 is a sane pre-render fallback.
+  function rowPx() {
+    const rows = el.querySelector('.xterm-rows')
+    const h = rows && term?.rows ? rows.getBoundingClientRect().height / term.rows : 0
+    return h > 0 ? h : 24
+  }
   function onTouchStart(e) {
-    if (e.touches.length === 1) touchY = e.touches[0].clientY
+    if (e.touches.length === 1) { touchY = e.touches[0].clientY; touchAccum = 0 }
   }
   function onTouchMove(e) {
     if (touchY == null || e.touches.length !== 1) return
+    e.preventDefault(); e.stopImmediatePropagation()   // claim the gesture from native + xterm scroll
     const y = e.touches[0].clientY
-    const dy = (touchY - y) * prefs.termScrollSensitivity
+    touchAccum += (touchY - y) * prefs.termScrollSensitivity
     touchY = y
-    if (!dy) return
+    const step = rowPx()
     const tgt = el.querySelector('.xterm-viewport') || el
-    tgt.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true }))
+    while (Math.abs(touchAccum) >= step) {
+      const dir = touchAccum > 0 ? 1 : -1
+      tgt.dispatchEvent(new WheelEvent('wheel', { deltaY: dir, deltaMode: 1, bubbles: true, cancelable: true }))
+      touchAccum -= dir * step
+    }
   }
-  function onTouchEnd() { touchY = null }
+  function onTouchEnd() { touchY = null; touchAccum = 0 }
 
   // Pinch-to-zoom over the terminal → its OWN font size (fontScale.term), independent of the app
   // scale. Reuses the shared store, so the A−/A+ buttons and the desktop controls all stay in sync.
@@ -137,10 +154,11 @@
     ro.observe(el)
     // Capture phase so we see an image paste before xterm's textarea does.
     el.addEventListener('paste', onPasteCapture, true)
-    // Touch-swipe → scrollback (capture so xterm's own touch handling doesn't swallow it; passive
-    // since nothing scrolls natively here — we drive xterm.scrollLines directly).
+    // Touch-swipe → scroll. Capture phase so we run BEFORE xterm's own (descendant) touch handler and
+    // can stopImmediatePropagation it; touchmove is non-passive so onTouchMove can preventDefault the
+    // native overflow scroll (touchstart/end stay passive — they never need to cancel).
     el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true })
-    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: true })
+    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false })
     el.addEventListener('touchend', onTouchEnd, { capture: true, passive: true })
     el.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true })
   }
