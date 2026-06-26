@@ -9,3 +9,6 @@ dist-electron/
 # stress-test screenshots
 *.png
 .playwright-mcp/
+
+# cached wireless-debugging target for scripts/install-android.sh
+scripts/.android-target.local

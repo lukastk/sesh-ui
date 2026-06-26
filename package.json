@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "SESH_UI_DEV_URL=http://127.0.0.1:5180 electron .",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder",
+    "android:install": "./scripts/install-android.sh"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.1",
@@ -24,7 +25,7 @@
     "vite": "^6.0.0"
   },
   "build": {
-    "appId": "work.jackfruiting.seshui",
+    "appId": "dev.lukastk.seshui",
     "productName": "sesh-ui",
     "files": [
       "dist/**",

@@ -1,4 +1,4 @@
-package work.jackfruiting.seshui
+package dev.lukastk.seshui
 
 import com.getcapacitor.JSObject
 import okhttp3.MediaType.Companion.toMediaType

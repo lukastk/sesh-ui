@@ -77,7 +77,7 @@ window.SeshNative = {
 plugin dials the peer's api_addr like the desktop main process. A `/v1/peers` listing endpoint in sesh
 (backlog) would let the phone discover peer api-addrs without a local `peers.json`.
 
-## How it's implemented (`android/app/src/main/java/work/jackfruiting/seshui/`)
+## How it's implemented (`android/app/src/main/java/dev/lukastk/seshui/`)
 
 - **`SeshNativePlugin.kt`** — `@CapacitorPlugin("SeshNative")`: `get/post/getWsBase/peerInfo/getConfig/
   setConfig`, registered in `MainActivity` before `super.onCreate` so the bridge exists at bundle eval.

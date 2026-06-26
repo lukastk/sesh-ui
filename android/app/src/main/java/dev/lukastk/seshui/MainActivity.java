@@ -1,4 +1,4 @@
-package work.jackfruiting.seshui;
+package dev.lukastk.seshui;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;

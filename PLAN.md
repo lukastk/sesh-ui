@@ -180,7 +180,7 @@ phone layout (no two-axis scroll), and the offline cold-start cache + loud stale
 - [x] **sesh `?token=` WS auth** (sesh `e00bd2a`, in origin/main): the two WS routes accept the bearer
       token via `?token=` (a WebView WS can't set the Authorization header). Scoped to rpc/terminal,
       constant-time, conformance-tested, deployed to the mymain hub.
-- [x] **Capacitor shell**: `capacitor.config.ts` (appId `work.jackfruiting.seshui`, webDir `dist`),
+- [x] **Capacitor shell**: `capacitor.config.ts` (appId `dev.lukastk.seshui`, webDir `dist`),
       `@capacitor/{core,cli,android}@6`, `npx cap add android` → `android/` gradle project. `npm run
       build` → `cap sync` → **`./gradlew assembleDebug` builds `app-debug.apk` (4.5M)**.
 - [x] **Native bridge plugin** (Kotlin, `android/app/.../Sesh*.kt`): `window.SeshNative` 1:1 with the

@@ -2,13 +2,13 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
-    namespace "work.jackfruiting.seshui"
+    namespace "dev.lukastk.seshui"
     compileSdk rootProject.ext.compileSdkVersion
     kotlinOptions {
         jvmTarget = "17" // match the Java 17 compileOptions from capacitor.build.gradle
     }
     defaultConfig {
-        applicationId "work.jackfruiting.seshui"
+        applicationId "dev.lukastk.seshui"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

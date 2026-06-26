@@ -1,4 +1,4 @@
-package work.jackfruiting.seshui
+package dev.lukastk.seshui
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec

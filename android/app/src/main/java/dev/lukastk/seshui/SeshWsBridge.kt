@@ -1,4 +1,4 @@
-package work.jackfruiting.seshui
+package dev.lukastk.seshui
 
 import okhttp3.OkHttpClient
 import okhttp3.Request

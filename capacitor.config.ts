@@ -3,9 +3,9 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // Capacitor wraps the EXISTING Svelte build (the same dist/ the web + Electron apps render) —
 // Android is ADDITIVE, not a fork. webDir is Vite's build output; the native bridge that gives the
 // WebView a daemon connection is the SeshNative Capacitor plugin (android/app/.../SeshNative*.kt),
-// which seshClient.js detects as window.SeshNative. appId matches the Electron build (work.jackfruiting.seshui).
+// which seshClient.js detects as window.SeshNative. appId matches the Electron build (dev.lukastk.seshui).
 const config: CapacitorConfig = {
-  appId: 'work.jackfruiting.seshui',
+  appId: 'dev.lukastk.seshui',
   appName: 'sesh-ui',
   webDir: 'dist',
   android: {
