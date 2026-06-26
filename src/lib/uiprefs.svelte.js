@@ -13,6 +13,10 @@ export const prefs = $state({
   // by default on Android and ON elsewhere (a desktop has a real keyboard — focusing is a freebie).
   // A null saved value means "never set" → fall back to the per-transport default.
   composerAutofocus: saved.composerAutofocus ?? (sesh.transport !== 'android'),
+  // Terminal touch-scroll sensitivity (a multiplier on finger-pixels → wheel deltaY in
+  // Terminal.svelte's onTouchMove). 1 = the raw 1:1 mapping, which felt sluggish on Android; default
+  // higher so a swipe travels further. Device-local — a phone and a laptop want different speeds.
+  termScrollSensitivity: saved.termScrollSensitivity ?? 3,
 })
 
 function persist() { try { localStorage.setItem(KEY, JSON.stringify($state.snapshot(prefs))) } catch {} }

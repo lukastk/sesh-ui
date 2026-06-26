@@ -60,7 +60,8 @@
   // one-finger vertical drag and let xterm's OWN handler do the right thing in BOTH modes: scroll the
   // scrollback in the normal buffer, and translate to cursor-key sequences for an alt-screen TUI
   // (claude/pi/codex), exactly as a mouse wheel does on desktop. deltaY is in pixels (deltaMode 0),
-  // so it tracks the finger 1:1. Natural direction: drag down → wheel up (older), drag up → newer.
+  // so it tracks the finger 1:1, scaled by the device-local termScrollSensitivity pref (1:1 felt
+  // sluggish on Android). Natural direction: drag down → wheel up (older), drag up → newer.
   let touchY = null
   function onTouchStart(e) {
     if (e.touches.length === 1) touchY = e.touches[0].clientY
@@ -68,7 +69,7 @@
   function onTouchMove(e) {
     if (touchY == null || e.touches.length !== 1) return
     const y = e.touches[0].clientY
-    const dy = touchY - y
+    const dy = (touchY - y) * prefs.termScrollSensitivity
     touchY = y
     if (!dy) return
     const tgt = el.querySelector('.xterm-viewport') || el

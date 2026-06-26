@@ -311,6 +311,13 @@
     </label>
     <p class="note">When off, opening a thread won't pop the on-screen keyboard (or grab the cursor) — tap the input to start typing. Defaults off on mobile, on elsewhere. Stored locally on this device.</p>
 
+    <label class="prefetch">
+      Terminal scroll sensitivity (touch)
+      <input type="number" min="0.5" max="10" step="0.5" value={prefs.termScrollSensitivity}
+        onchange={(e) => setPref('termScrollSensitivity', Math.min(10, Math.max(0.5, Number(e.currentTarget.value) || 3)))} />
+    </label>
+    <p class="note">How far a one-finger swipe scrolls the terminal. 1 = the finger 1:1; higher = faster (default 3). Affects only the terminal's touch-scroll, not the rest of the app. Stored locally on this device.</p>
+
     <hr class="sep" />
     <div class="km-head">
       <h3>Keyboard shortcuts</h3>
