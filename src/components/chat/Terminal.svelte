@@ -1,6 +1,8 @@
 <script>
   // Live xterm.js terminal for a headful thread over the daemon WebSocket
-  // GET /v1/threads/terminal?id=&cols=&rows= (agent-agnostic, detach-safe server-side).
+  // GET /v1/threads/terminal?id=&cols=&rows= (agent-agnostic; server-side the daemon attaches
+  // the pty DIRECTLY to the thread's real tmux session — sizing follows the work server's
+  // `window-size latest`, so the view adapts to whichever client is most-recently active).
   // Bidirectional: pane bytes → xterm, keystrokes → pane; {type:'resize'} on fit changes.
   import { Terminal } from '@xterm/xterm'
   import { FitAddon } from '@xterm/addon-fit'
@@ -81,8 +83,8 @@
   function onPinchMove(scale) { setTerm(Math.round(pinchBaseTerm * scale)) }
 
   // Open (or re-open) the terminal WS to the daemon. Split out of connect() so we can re-attach on
-  // resume: the daemon spins up a FRESH grouped uiterm-* viewer per connection, so a clean re-open
-  // just redraws the current pane — no server state to restore. Guarded so we never stack sockets.
+  // resume: each connection is a fresh DIRECT attach to the thread's real session server-side, so a
+  // clean re-open just redraws the current pane — no client state to restore. Guarded so we never stack sockets.
   function openSocket() {
     if (destroyed || !term) return
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return
