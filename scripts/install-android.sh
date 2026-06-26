@@ -89,15 +89,21 @@ try_connect() {
   return 1
 }
 
-prompt() { local v; read -r -p "$1" v </dev/tty; echo "$v"; }
+# Can we actually open the controlling terminal? `-r /dev/tty` is TRUE on macOS even with no
+# controlling terminal (over SSH/nohup), so test by really opening it for reading.
+have_tty() { { : </dev/tty; } 2>/dev/null; }
+
+# Read one line from the terminal. Fails (non-zero) if there's no usable tty — callers must not
+# loop on it. `v=""` keeps `set -u` happy if read returns early.
+prompt() { local v=""; IFS= read -r -p "$1" v </dev/tty || return 1; printf '%s' "$v"; }
 
 # interactive recovery: either the connect port rotated (still paired) or we need to pair.
 ensure_connected() {
   try_connect && { say "device online: $(serial)"; return 0; }
 
   # The recovery flow reads the pairing/connect port off the phone interactively. If there's no
-  # terminal to prompt on (CI, an agent, a piped run), fail loudly instead of spinning forever.
-  if [[ ! -t 0 && ! -r /dev/tty ]]; then
+  # terminal to prompt on (CI, an agent, a piped/nohup run), fail loudly instead of spinning forever.
+  if ! have_tty; then
     err "phone not reachable at ${HOST}:${PORT:-?} and no terminal to pair/connect interactively."
     err "Run this from an interactive shell, or pass --port <current connect port>."
     exit 1
