@@ -4,10 +4,10 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 // Dev-only proxy: stands in for the Electron main-process / Android native HTTP layer.
 // It forwards to a sesh daemon's TCP API and INJECTS the bearer token server-side, so the
 // browser/renderer never holds the token (and CORS is dodged — the daemon sends none).
-// Point these at your dev daemon (see PLAN.md → "Running a dev daemon").
+// Point these at your dev daemon (see AGENTS.md → "Running").
 const DAEMON = process.env.SESH_API_URL || 'http://127.0.0.1:8990'
 const TOKEN = process.env.SESH_API_TOKEN || 'devtoken'
-// Dev daemon (PLAN.md → "Running a dev daemon"): an ISOLATED daemon with its TCP API on,
+// Dev daemon (AGENTS.md → "Running"): an ISOLATED daemon with its TCP API on,
 // never the user's live daemon. SESH_MACHINE=seshui-dev SESH_HOME=/tmp/seshui-dev … on :8990.
 
 // Inject the bearer token on the FORWARDED request (proxyReq / proxyReqWs). Vite's static
