@@ -23,8 +23,8 @@ Svelte UI ── seshClient (transport seam) ──┬─ Electron: main-process
 ```
 
 - **One Svelte codebase.** All daemon access goes through **`src/lib/seshClient.js`** — a single seam
-  with `get`/`post`/`wsURL`. Svelte stores never know which transport is underneath. This is the spine;
-  build it first and keep it clean.
+  with `get`/`post`/`wsURL`. Svelte stores never know which transport is underneath. This is the spine —
+  all daemon access goes through it; keep it clean.
 - **The browser can't hit the daemon directly** (no CORS; token required even on preflight). So traffic
   ALWAYS goes through a non-browser layer: the Electron main process, Android native HTTP, or (dev only)
   the Vite proxy. **Never put the bearer token in the renderer** for the Electron/Android transports —
@@ -42,16 +42,34 @@ A thread is one of two runtime shapes; branch on `head` (`headful`/`headless`) a
   `GET /v1/threads/headless-reply` + `GET /v1/threads/transcript`. Each agent's transcript JSONL differs
   (per-agent parsers) — but prefer a future normalized sesh endpoint over reimplementing all three here.
 
-Both WebSocket endpoints already exist in sesh (committed to `~/mysetup/sesh` main). Everything else the
+The RPC and terminal WebSocket endpoints already exist in sesh (committed to `~/mysetup/sesh` main);
+the Master cockpit (see Screens) uses a third streaming WS, `GET /v1/master/terminal`. Everything else the
 UI needs is plain request/response on the existing API.
 
-## The reference prototype
+## Screens
 
-A throwaway Svelte prototype that proved every screen lives at
-**`~/mysetup/sesh/_dev/experiments/03_svelte_shell/`** (and the chat experiments at `01`, `04`, `05`,
-`06`, `07`, `08`). **Rewrite from it — do NOT copy-paste.** The scoping verdict + feature→UI map are in
-`~/mysetup/sesh/_dev/experiments/{UI_SCOPING,FEATURE_UI_MAP}.md` — read them; they map every sesh feature
-to its UI surface and call out the priorities and risks.
+The shell is a top-nav router over five screens (`src/App.svelte`), each a component in
+`src/components/`:
+
+- **Threads** (`ThreadsScreen`) — the thread grid; new/fork/stop/archive/hold verbs; hosts the two chat
+  surfaces above.
+- **Tickets** (`TicketsBoard`) — the ticket board: create/edit tickets, bind them to threads, move them
+  across machines.
+- **Machines** (`MachinesScreen`) — the peers/mesh view (per-machine reachability and detail).
+- **Automation** (`AutomationScreen`) — hooks and agent-to-agent `subscriptions` (the daemon's
+  `hooks`/`subscriptions` API groups).
+- **Master** (`MasterScreen` + `MasterTerminal`) — the cockpit, backed by the master streaming WS
+  `GET /v1/master/terminal`.
+
+## The reference prototype (historical)
+
+The app was originally scaffolded from a throwaway Svelte prototype at
+**`~/mysetup/sesh/_dev/experiments/03_svelte_shell/`** (chat experiments at `01`, `04`–`08`). The app is
+now fully built (`src/`, an `electron/` main-process layer, and a shipped Android build — see `README.md`
+/ `ANDROID.md`), so treat the prototype and the scoping docs
+`~/mysetup/sesh/_dev/experiments/{UI_SCOPING,FEATURE_UI_MAP}.md` as **historical reference**: they map
+every sesh feature to its UI surface and remain useful background, but extend the existing app rather
+than rebuilding from them.
 
 ## Rules
 
@@ -83,5 +101,5 @@ SESH_MACHINE=seshui-dev SESH_HOME=/tmp/seshui-dev ... /tmp/sesh thread new --age
 ```
 
 Point the Vite dev proxy at `127.0.0.1:8990` with the `devtoken` (see `vite.config.js`). **Note:** the
-streaming endpoints are only available on a daemon built from current sesh `main` — use a dev daemon
-(above) until the fleet is redeployed.
+streaming endpoints require a daemon built from current sesh `main`; if the daemon you're targeting
+predates them, use a dev daemon (above).
