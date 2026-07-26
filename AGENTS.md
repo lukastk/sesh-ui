@@ -61,6 +61,38 @@ The shell is a top-nav router over five screens (`src/App.svelte`), each a compo
 - **Master** (`MasterScreen` + `MasterTerminal`) — the cockpit, backed by the master streaming WS
   `GET /v1/master/terminal`.
 
+Plus one non-screen surface: **Settings** (`SettingsModal`) — see below.
+
+## Settings live on the DAEMON, not in the app (`ui_config.toml`)
+
+The app's preferences are **not** app-local state. They live in
+`<SESH_HOME>/ui_config.toml` on whichever daemon you're connected to, and the daemon serves
+them at **`GET`/`POST /v1/ui-config`** (`api.uiConfigGet` / `api.uiConfigSet`). `SettingsModal`
+is the editor. This follows the pure-client rule: sesh stores and validates, the app renders —
+so the same preferences apply from desktop and Android against one daemon, and a bad value
+(e.g. an invalid `cwd_label` regex) comes back as the daemon's **loud 400**, which the modal
+surfaces via `pushError` and then reverts its control. Keys: `collapse_parents`, `cwd_roots`,
+`cwd_labels`, `transcript_prefetch_secs`, `master_command` (what Master mode runs in the pty),
+`default_agent` / `default_machine` / `default_chat_view` (new-thread + open-thread
+preselections), and `extra_keys` (the Android touch-keyboard row — an **opaque JSON string the
+app owns**; sesh just stores and serves it). Saves are patch-style over the fetched config, and
+a field an older daemon doesn't know is omitted rather than sent (it would 400 every save).
+
+## Plugins — daemon-side command providers
+
+`GET /v1/plugins` + `POST /v1/plugins/:name/:capability` (`api.plugins` / `api.pluginRun`) run
+commands declared by manifests at `<SESH_HOME>/plugins/*.toml` **on the target daemon's host**.
+This exists because the app — especially on Android, or pointed at a remote daemon — has no
+shell there. Two capability kinds: **list** (JSON output mapped to `{id,label,groups,path}`
+items) and **action** (form fields substituted into the argv as ARGV, never a shell string).
+
+`CwdFuzzyPicker` is the consumer: for each `cwd_roots` entry it looks for a list capability
+whose mapped `path` template lives under that root (boxyard's `boxes` maps to `~/dev/{…}`, so
+it claims root `~/dev`) and uses it — giving box **names and groups** instead of bare dir
+names — plus a sibling action capability from the same plugin for a create affordance. With no
+matching plugin (or an older daemon) it falls back to `GET /v1/fs/list` and `cwd_labels`.
+Commands come from the manifest only, never from the client.
+
 ## The reference prototype (historical)
 
 The app was originally scaffolded from a throwaway Svelte prototype at
