@@ -1,5 +1,5 @@
 <script>
-  // The "Master" mode: a terminal attached to a machine's master tmux cockpit (the daemon runs
+  // The "Master" mode: a terminal attached to a machine's cockpit — mycockpit's MASTER level (the daemon runs
   // ui_config.master_command, e.g. "mmt-start", in a pty over a WebSocket — schema ≥28).
   //
   // PER-MACHINE: a selector lets you open ANY mesh machine's master, routed to that machine's
@@ -54,7 +54,7 @@
 
 <div class="master">
   <header>
-    <span class="ttl">Master cockpit</span>
+    <span class="ttl">mycockpit</span>
     <label class="mpick">
       machine
       <select bind:value={selected} disabled={machines.length === 0}>
@@ -71,7 +71,7 @@
   <section class="surface">
     {#if !connected}
       <div class="notice"><div class="ne">🔌</div><div class="nt">Daemon unreachable.</div>
-        <div class="nb">Connect to a daemon to open its master cockpit.</div></div>
+        <div class="nb">Connect to a daemon to open its cockpit.</div></div>
     {:else if loading}
       <div class="notice"><div class="nt">Loading…</div></div>
     {:else if cfgErr}

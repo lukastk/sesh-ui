@@ -261,7 +261,7 @@
           <input value={uiCfg.master_command} placeholder="(unset — Master tab disabled)"
             onchange={(e) => setMasterCommand(e.currentTarget.value)} />
         </label>
-        <p class="note">The shell command the <b>Master</b> tab runs in a pty to attach this machine's master tmux cockpit. Runs via <code>$SHELL -ic</code> so functions/aliases resolve. Empty disables the Master endpoint on this daemon.</p>
+        <p class="note">The shell command the <b>Master</b> tab runs in a pty to attach this machine's cockpit (mycockpit's master level). Runs via <code>$SHELL -ic</code> so functions/aliases resolve. Empty disables the Master endpoint on this daemon.</p>
       {/if}
 
       {#if uiCfg.cwd_roots !== undefined}

@@ -1,5 +1,5 @@
 <script>
-  // Live xterm.js terminal for the MASTER cockpit over the daemon WebSocket
+  // Live xterm.js terminal for mycockpit (the MASTER level) over the daemon WebSocket
   // GET /v1/master/terminal?cols=&rows= (runs ui_config.master_command in a pty server-side).
   // The xterm setup mirrors Terminal.svelte (same FitAddon, resize frame, binary read/write) but
   // there's no thread/blob context here — just the master tmux attach. `machine` routes the WS to a
@@ -14,7 +14,7 @@
   import { pinch } from '../lib/pinch.js'
   import ExtraKeys from './chat/ExtraKeys.svelte'
 
-  let { machine = undefined } = $props()  // which machine's master cockpit (undefined = connected)
+  let { machine = undefined } = $props()  // which machine's cockpit (undefined = connected)
   // Termux-style extra-keys row (Android only) — same layout as the thread terminal, from the
   // connected daemon's ui_config.extra_keys (empty = no row).
   let extraKeys = $state('')
@@ -49,7 +49,7 @@
   function onPinchStart() { pinchBaseTerm = fontScale.term }
   function onPinchMove(scale) { setTerm(Math.round(pinchBaseTerm * scale)) }
 
-  // Open (or re-open) the master-cockpit WS. Split out of connect() so we can re-attach on resume:
+  // Open (or re-open) the cockpit WS. Split out of connect() so we can re-attach on resume:
   // a fresh attach just re-runs master_command's pty viewer server-side. Guarded so we never stack
   // sockets. A failed upgrade (e.g. master_command unset → 409) or a dropped attach lands in onclose.
   function openSocket() {

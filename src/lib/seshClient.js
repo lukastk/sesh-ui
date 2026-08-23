@@ -204,7 +204,7 @@ export const api = {
   rpcURL: (id, machine) => sesh.wsURL(`/v1/threads/rpc?id=${encodeURIComponent(id)}`, machine),
   terminalURL: (id, cols, rows, machine) =>
     sesh.wsURL(`/v1/threads/terminal?id=${encodeURIComponent(id)}&cols=${cols}&rows=${rows}`, machine),
-  // The master-cockpit terminal WS (daemon runs ui_config.master_command in a pty; schema ≥28).
+  // The cockpit terminal WS (daemon runs ui_config.master_command in a pty; schema ≥28).
   // Same pty<->WS protocol as the thread terminal; `machine` routes to that peer's master (the
   // wsURL seam injects the token + __machine for every transport).
   masterURL: (cols, rows, machine) => sesh.wsURL(`/v1/master/terminal?cols=${cols}&rows=${rows}`, machine),
