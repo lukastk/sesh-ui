@@ -43,7 +43,7 @@ A thread is one of two runtime shapes; branch on `head` (`headful`/`headless`) a
   (per-agent parsers) — but prefer a future normalized sesh endpoint over reimplementing all three here.
 
 The RPC and terminal WebSocket endpoints already exist in sesh (committed to `~/mysetup/sesh` main);
-the Master cockpit (see Screens) uses a third streaming WS, `GET /v1/master/terminal`. Everything else the
+the Master screen — mycockpit (see Screens) — uses a third streaming WS, `GET /v1/master/terminal`. Everything else the
 UI needs is plain request/response on the existing API.
 
 ## Screens
@@ -58,8 +58,10 @@ The shell is a top-nav router over five screens (`src/App.svelte`), each a compo
 - **Machines** (`MachinesScreen`) — the peers/mesh view (per-machine reachability and detail).
 - **Automation** (`AutomationScreen`) — hooks and agent-to-agent `subscriptions` (the daemon's
   `hooks`/`subscriptions` API groups).
-- **Master** (`MasterScreen` + `MasterTerminal`) — the cockpit, backed by the master streaming WS
-  `GET /v1/master/terminal`.
+- **Master** (`MasterScreen` + `MasterTerminal`) — **mycockpit** ("the cockpit": Lukas's
+  cross-machine tmux cockpit, formerly "the master tmux setup"), backed by the master
+  streaming WS `GET /v1/master/terminal`. The screen, its components and the endpoint are
+  still named `master`; only the prose name changed.
 
 Plus one non-screen surface: **Settings** (`SettingsModal`) — see below.
 
